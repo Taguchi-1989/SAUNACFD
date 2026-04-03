@@ -59,17 +59,33 @@
         },
         "heater": {
           "type": "object",
+          "required": ["power_kw", "position"],
           "properties": {
             "power_kw": { "type": "number", "exclusiveMinimum": 0 },
             "position": {
               "type": "object",
+              "required": ["x", "y", "z"],
               "properties": {
                 "x": { "type": "number" },
                 "y": { "type": "number" },
                 "z": { "type": "number" }
-              }
+              },
+              "additionalProperties": false
+            },
+            "width": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 0.5,
+              "description": "Heater width in meters (z-direction)"
+            },
+            "height": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 0.5,
+              "description": "Heater height in meters (y-direction)"
             }
-          }
+          },
+          "additionalProperties": false
         }
       }
     },

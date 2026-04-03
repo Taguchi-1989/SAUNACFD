@@ -1,0 +1,53 @@
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       volScalarField;
+    object      T;
+}
+
+dimensions      [0 0 0 1 0 0 0];
+
+internalField   uniform {{ T_initial }};
+
+boundaryField
+{
+    floor
+    {
+        type            fixedValue;
+        value           uniform {{ T_walls }};
+    }
+
+    ceiling
+    {
+        type            fixedValue;
+        value           uniform {{ T_walls }};
+    }
+
+    heater_wall
+    {
+        type            externalWallHeatFluxTemperature;
+        mode            flux;
+        q               uniform {{ heat_flux }};
+        kappaMethod     fluidThermo;
+        value           uniform {{ T_initial }};
+    }
+
+    opposite_wall
+    {
+        type            fixedValue;
+        value           uniform {{ T_walls }};
+    }
+
+    front
+    {
+        type            fixedValue;
+        value           uniform {{ T_walls }};
+    }
+
+    back
+    {
+        type            fixedValue;
+        value           uniform {{ T_walls }};
+    }
+}
