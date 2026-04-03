@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "saunaflow"
+version = "0.1.0"
+description = "Python harness-driven CFD simulation tool for sauna thermal environments"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml>=6.0",
+    "jsonschema>=4.20",
+    "numpy>=1.26",
+    "matplotlib>=3.8",
+    "click>=8.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "ruff>=0.4",
+    "mypy>=1.8",
+    "bandit>=1.7",
+    "vulture>=2.10",
+]
+
+[project.scripts]
+saunaflow = "harness.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-x -q"
+
+[tool.ruff]
+src = ["src"]
+target-version = "py311"
+line-length = 99
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+mypy_path = "src"
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+
+[tool.coverage.run]
+source = ["harness"]
+
+[tool.coverage.report]
+fail_under = 60
+show_missing = true
