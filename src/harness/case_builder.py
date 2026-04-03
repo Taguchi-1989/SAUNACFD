@@ -22,6 +22,152 @@ _MESH_DENSITY: dict[str, int] = {
 }
 
 
+def _clamp_patch_start(start: float, size: float, limit: float) -> float:
+    """Shift a patch start coordinate into the domain without shrinking it."""
+    effective_size = min(size, limit)
+    return min(max(0.0, start), limit - effective_size)
+
+
+def _unique_points(points: list[float]) -> list[float]:
+    """Drop duplicate split points while preserving order."""
+    result: list[float] = []
+    for point in points:
+        if not result or abs(point - result[-1]) > 1e-9:
+            result.append(point)
+    return result
+
+
+def _allocate_segment_cells(points: list[float], total_cells: int) -> list[int]:
+    """Allocate at least one cell to each segment while preserving total count."""
+    spans = [points[i + 1] - points[i] for i in range(len(points) - 1)]
+    total_span = sum(spans)
+    if total_span <= 0:
+        raise ValueError("Mesh split points must define a positive span.")
+
+    cells = [
+        max(1, round(total_cells * span / total_span))
+        for span in spans
+    ]
+
+    diff = total_cells - sum(cells)
+    while diff != 0:
+        if diff > 0:
+            idx = max(range(len(cells)), key=lambda i: spans[i])
+            cells[idx] += 1
+            diff -= 1
+            continue
+
+        candidates = [i for i, cell_count in enumerate(cells) if cell_count > 1]
+        if not candidates:
+            break
+        idx = max(candidates, key=lambda i: spans[i])
+        cells[idx] -= 1
+        diff += 1
+
+    return cells
+
+
+def _build_block_mesh_context(geometry: dict, boundary_conditions: dict) -> dict:
+    """Build a segmented mesh so the heater occupies its own wall patch."""
+    mesh = compute_mesh_params(geometry)
+    dims = geometry["dimensions"]
+    heater = boundary_conditions.get("heater", {})
+
+    raw_width = heater.get("width", 0.5)
+    raw_height = heater.get("height", 0.5)
+    width = min(raw_width, dims["z"])
+    height = min(raw_height, dims["y"])
+
+    position = heater.get("position", {})
+    y0 = _clamp_patch_start(position.get("y", 0.0), height, dims["y"])
+    y1 = y0 + height
+    z0 = _clamp_patch_start(position.get("z", dims["z"] / 2) - width / 2, width, dims["z"])
+    z1 = z0 + width
+
+    y_points = _unique_points([0.0, y0, y1, dims["y"]])
+    z_points = _unique_points([0.0, z0, z1, dims["z"]])
+    y_cells = _allocate_segment_cells(y_points, mesh["ny"])
+    z_cells = _allocate_segment_cells(z_points, mesh["nz"])
+
+    nz_points = len(z_points)
+    plane_size = len(y_points) * nz_points
+
+    def vertex_index(x_side: int, y_idx: int, z_idx: int) -> int:
+        return x_side * plane_size + y_idx * nz_points + z_idx
+
+    vertices: list[tuple[float, float, float]] = []
+    for x in (0.0, dims["x"]):
+        for y in y_points:
+            for z in z_points:
+                vertices.append((x, y, z))
+
+    blocks: list[dict[str, object]] = []
+    floor_faces: list[tuple[int, int, int, int]] = []
+    ceiling_faces: list[tuple[int, int, int, int]] = []
+    front_faces: list[tuple[int, int, int, int]] = []
+    back_faces: list[tuple[int, int, int, int]] = []
+    heater_faces: list[tuple[int, int, int, int]] = []
+    heater_surround_faces: list[tuple[int, int, int, int]] = []
+    opposite_faces: list[tuple[int, int, int, int]] = []
+
+    heater_y_range = (y0, y1)
+    heater_z_range = (z0, z1)
+
+    for y_idx in range(len(y_points) - 1):
+        for z_idx in range(len(z_points) - 1):
+            v0 = vertex_index(0, y_idx, z_idx)
+            v1 = vertex_index(1, y_idx, z_idx)
+            v2 = vertex_index(1, y_idx + 1, z_idx)
+            v3 = vertex_index(0, y_idx + 1, z_idx)
+            v4 = vertex_index(0, y_idx, z_idx + 1)
+            v5 = vertex_index(1, y_idx, z_idx + 1)
+            v6 = vertex_index(1, y_idx + 1, z_idx + 1)
+            v7 = vertex_index(0, y_idx + 1, z_idx + 1)
+
+            blocks.append({
+                "vertices": (v0, v1, v2, v3, v4, v5, v6, v7),
+                "cells": (mesh["nx"], y_cells[y_idx], z_cells[z_idx]),
+            })
+
+            x0_face = (v0, v4, v7, v3)
+            opposite_faces.append((v1, v2, v6, v5))
+
+            segment_y = (y_points[y_idx], y_points[y_idx + 1])
+            segment_z = (z_points[z_idx], z_points[z_idx + 1])
+            is_heater_face = segment_y == heater_y_range and segment_z == heater_z_range
+            if is_heater_face:
+                heater_faces.append(x0_face)
+            else:
+                heater_surround_faces.append(x0_face)
+
+            if y_idx == 0:
+                floor_faces.append((v0, v1, v5, v4))
+            if y_idx == len(y_points) - 2:
+                ceiling_faces.append((v3, v7, v6, v2))
+            if z_idx == 0:
+                front_faces.append((v0, v3, v2, v1))
+            if z_idx == len(z_points) - 2:
+                back_faces.append((v4, v5, v6, v7))
+
+    return {
+        **mesh,
+        "heater_area": round(height * width, 6),
+        "heater_y0": round(y0, 6),
+        "heater_y1": round(y1, 6),
+        "heater_z0": round(z0, 6),
+        "heater_z1": round(z1, 6),
+        "vertices": vertices,
+        "blocks": blocks,
+        "floor_faces": floor_faces,
+        "ceiling_faces": ceiling_faces,
+        "heater_faces": heater_faces,
+        "heater_surround_faces": heater_surround_faces,
+        "opposite_faces": opposite_faces,
+        "front_faces": front_faces,
+        "back_faces": back_faces,
+    }
+
+
 def compute_mesh_params(geometry: dict) -> dict:
     """Compute blockMesh parameters from geometry config.
 
@@ -48,13 +194,10 @@ def compute_heater_params(boundary_conditions: dict, geometry: dict) -> dict:
     """
     heater = boundary_conditions.get("heater", {})
     power_kw = heater.get("power_kw", 9.0)
-    width = heater.get("width", 0.5)
-    height = heater.get("height", 0.5)
-
-    # For Phase 1: heater is the entire heater_wall (x=0 face)
-    # Heat flux distributed over that wall area
-    wall_area = geometry["dimensions"]["y"] * geometry["dimensions"]["z"]
-    heat_flux = (power_kw * 1000.0) / wall_area
+    width = min(heater.get("width", 0.5), geometry["dimensions"]["z"])
+    height = min(heater.get("height", 0.5), geometry["dimensions"]["y"])
+    heater_area = width * height
+    heat_flux = (power_kw * 1000.0) / heater_area
 
     walls = boundary_conditions.get("walls", {})
     t_walls = walls.get("temperature", 293.15)
@@ -144,7 +287,7 @@ def build_case(case_yaml: Path, output_dir: Path | None = None) -> Path:
     output_dir.mkdir(parents=True)
 
     # Build template context
-    mesh = compute_mesh_params(data["geometry"])
+    mesh = _build_block_mesh_context(data["geometry"], data["boundary_conditions"])
     heater = compute_heater_params(data["boundary_conditions"], data["geometry"])
     solver = data["solver"]
     probes = _build_probe_context(data.get("probes", []))

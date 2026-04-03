@@ -38,10 +38,10 @@ class SolverResult:
 
 
 def parse_residuals(log_text: str) -> list[dict[str, float]]:
-    """Parse per-iteration initial residuals from a solver log.
+    """Parse per-iteration final residuals from a solver log.
 
     Returns a list of dicts (one per time step), each mapping
-    field name to initial residual value.
+    field name to final residual value.
     """
     iterations: list[dict[str, float]] = []
     current: dict[str, float] = {}
@@ -50,14 +50,14 @@ def parse_residuals(log_text: str) -> list[dict[str, float]]:
         m = _RESIDUAL_RE.search(line)
         if m:
             field_name = m.group(1)
-            initial_residual = float(m.group(2))
+            final_residual = float(m.group(3))
 
             # New iteration starts when we see a field we've already recorded
             if field_name in current:
                 iterations.append(current)
                 current = {}
 
-            current[field_name] = initial_residual
+            current[field_name] = final_residual
 
     # Don't forget the last iteration
     if current:

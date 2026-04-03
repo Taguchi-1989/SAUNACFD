@@ -27,8 +27,10 @@ def parse_check_mesh(output: str) -> tuple[int, dict[str, float]]:
     cell_count = 0
     quality: dict[str, float] = {}
 
-    # Extract cell count: "cells:           9600"
+    # OpenFOAM variants report either "cells:" or "Number of cells ="
     m = re.search(r"cells:\s+(\d+)", output)
+    if not m:
+        m = re.search(r"Number of cells\s*=\s*(\d+)", output)
     if m:
         cell_count = int(m.group(1))
 

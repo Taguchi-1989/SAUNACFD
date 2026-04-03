@@ -45,8 +45,8 @@ class TestComputeHeaterParams:
               "walls": {"temperature": 293.15}}
         geo = {"dimensions": {"x": 3.0, "y": 2.5, "z": 2.5}}
         result = compute_heater_params(bc, geo)
-        # 9000 W / (2.5 * 2.5) = 1440 W/m2
-        assert result["heat_flux"] == 1440.0
+        # 9000 W / (0.6 * 0.5) = 30000 W/m2
+        assert result["heat_flux"] == 30000.0
         assert result["T_walls"] == 293.15
         assert result["T_initial"] == 293.15
 
@@ -92,6 +92,9 @@ class TestBuildCase:
         mesh_dict = (out / "system" / "blockMeshDict").read_text(encoding="utf-8")
         assert "3.0" in mesh_dict  # dim_x
         assert "2.5" in mesh_dict  # dim_y
+        assert "heater_wall_surround" in mesh_dict
+        assert "0.1" in mesh_dict
+        assert "0.6" in mesh_dict
 
         # Check controlDict has correct solver
         control = (out / "system" / "controlDict").read_text(encoding="utf-8")
@@ -100,7 +103,8 @@ class TestBuildCase:
         # Check T file has heat flux
         t_file = (out / "0" / "T").read_text(encoding="utf-8")
         assert "externalWallHeatFluxTemperature" in t_file
-        assert "1440.0" in t_file  # 9000/(2.5*2.5)
+        assert "30000.0" in t_file  # 9000/(0.6*0.5)
+        assert "heater_wall_surround" in t_file
 
     def test_probes_in_controldict(self, sample_case_path: Path, tmp_path: Path) -> None:
         out = tmp_path / "test_case"

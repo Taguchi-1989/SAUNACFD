@@ -55,14 +55,14 @@ class TestParseResiduals:
 
     def test_first_iteration_values(self) -> None:
         residuals = parse_residuals(SAMPLE_LOG)
-        assert residuals[0]["Ux"] == 1.0
-        assert residuals[0]["T"] == 1.0
-        assert residuals[0]["p_rgh"] == 1.0
+        assert residuals[0]["Ux"] == 0.1
+        assert residuals[0]["T"] == 0.001
+        assert residuals[0]["p_rgh"] == 0.01
 
     def test_last_iteration_converged(self) -> None:
         residuals = parse_residuals(SAMPLE_LOG)
-        assert residuals[2]["Ux"] == 1e-5
-        assert residuals[2]["T"] == 1e-6
+        assert residuals[2]["Ux"] == 1e-7
+        assert residuals[2]["T"] == 1e-8
 
     def test_empty_log(self) -> None:
         assert parse_residuals("") == []
@@ -71,7 +71,7 @@ class TestParseResiduals:
         partial = "smoothSolver:  Solving for Ux, Initial residual = 0.5, Final residual = 0.05, No Iterations 2\n"
         residuals = parse_residuals(partial)
         assert len(residuals) == 1
-        assert residuals[0]["Ux"] == 0.5
+        assert residuals[0]["Ux"] == 0.05
 
 
 class TestCheckConvergence:
@@ -90,6 +90,26 @@ class TestCheckConvergence:
         residuals = [{"T": 1e-4}]
         assert check_convergence(residuals, thresholds={"T": 1e-3}) is True
         assert check_convergence(residuals, thresholds={"T": 1e-5}) is False
+
+    def test_uses_final_residuals_for_convergence(self) -> None:
+        log = (
+            "smoothSolver:  Solving for Ux, Initial residual = 1e-2, "
+            "Final residual = 1e-7, No Iterations 3\n"
+            "smoothSolver:  Solving for Uy, Initial residual = 1e-2, "
+            "Final residual = 1e-7, No Iterations 3\n"
+            "smoothSolver:  Solving for Uz, Initial residual = 1e-2, "
+            "Final residual = 1e-7, No Iterations 3\n"
+            "GAMG:  Solving for p_rgh, Initial residual = 1e-2, "
+            "Final residual = 1e-7, No Iterations 3\n"
+            "smoothSolver:  Solving for T, Initial residual = 1e-3, "
+            "Final residual = 1e-8, No Iterations 3\n"
+            "smoothSolver:  Solving for k, Initial residual = 1e-2, "
+            "Final residual = 1e-7, No Iterations 3\n"
+            "smoothSolver:  Solving for epsilon, Initial residual = 1e-2, "
+            "Final residual = 1e-7, No Iterations 3\n"
+        )
+        residuals = parse_residuals(log)
+        assert check_convergence(residuals) is True
 
 
 class TestRunSolver:

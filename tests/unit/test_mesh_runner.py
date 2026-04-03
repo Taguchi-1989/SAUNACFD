@@ -45,6 +45,7 @@ class TestParseCheckMesh:
 
     def test_quality_metrics(self) -> None:
         count, quality = parse_check_mesh(SAMPLE_CHECKMESH_OUTPUT)
+        assert count == 110592
         assert quality["max_aspect_ratio"] == 1.0
         assert quality["max_non_orthogonality"] == 0.0
 

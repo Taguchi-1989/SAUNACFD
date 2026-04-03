@@ -33,6 +33,12 @@ boundaryField
         value           uniform {{ T_initial }};
     }
 
+    heater_wall_surround
+    {
+        type            fixedValue;
+        value           uniform {{ T_walls }};
+    }
+
     opposite_wall
     {
         type            fixedValue;
