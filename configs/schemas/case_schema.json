@@ -172,6 +172,17 @@
         "duration": {"type": "number", "minimum": 0, "default": 30.0, "description": "Aufguss duration [s]"}
       },
       "required": ["beta_aug"]
+    },
+    "validation": {
+      "type": "object",
+      "properties": {
+        "experimental_csv": {"type": "string", "description": "Path to experimental CSV"},
+        "tolerances": {
+          "type": "object",
+          "additionalProperties": {"type": "number"},
+          "description": "Per-probe tolerance in K"
+        }
+      }
     }
   },
   "additionalProperties": false
