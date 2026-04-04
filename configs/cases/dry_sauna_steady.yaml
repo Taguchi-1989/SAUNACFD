@@ -44,3 +44,10 @@ probes:
   - name: floor_level
     position: { x: 1.5, y: 0.1, z: 1.25 }
     fields: [T]
+
+validation:
+  experimental_csv: "../../experiments/processed/dry_sauna_sample.csv"
+  tolerances:
+    upper_bench: 30.0
+    lower_bench: 30.0
+    floor_level: 30.0
