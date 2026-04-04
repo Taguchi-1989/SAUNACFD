@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-from harness.simple_solver import _plume_entrainment, solve_two_zone
+from harness.simple_solver import _compute_view_factors, _plume_entrainment, solve_two_zone
 
 
 def _write_case_yaml(tmp_path: Path, **overrides) -> Path:
@@ -132,3 +132,31 @@ class TestSolveTwoZone:
         assert len(result.residual_history) > 0
         # Residuals should generally decrease
         assert result.residual_history[-1] < result.residual_history[0]
+
+
+class TestViewFactors:
+    def test_view_factors_sum_reasonable(self) -> None:
+        """All view factors positive and sum approximately 1.0."""
+        vf = _compute_view_factors(3.0, 2.5, 2.5, 0.1, 0.5, 0.6)
+        assert all(v > 0 for v in vf.values())
+        total = sum(vf.values())
+        assert 0.8 <= total <= 1.2  # approximately 1.0
+
+    def test_view_factors_heater_low(self) -> None:
+        """Heater near floor should have higher floor factor."""
+        vf_low = _compute_view_factors(3.0, 2.5, 2.5, 0.05, 0.3, 0.6)
+        vf_high = _compute_view_factors(3.0, 2.5, 2.5, 1.5, 0.3, 0.6)
+        assert vf_low["floor"] > vf_high["floor"]
+
+    def test_view_factors_heater_high(self) -> None:
+        """Heater near ceiling should have higher ceiling factor."""
+        vf_low = _compute_view_factors(3.0, 2.5, 2.5, 0.05, 0.3, 0.6)
+        vf_high = _compute_view_factors(3.0, 2.5, 2.5, 1.8, 0.3, 0.6)
+        assert vf_high["ceiling"] > vf_low["ceiling"]
+
+    def test_view_factor_replaces_fixed(self, tmp_path: Path) -> None:
+        """Solver with view factors still converges."""
+        path = _write_case_yaml(tmp_path)
+        result = solve_two_zone(path, max_iter=10000)
+        assert result.converged is True
+        assert result.upper_layer_temp > result.lower_layer_temp

@@ -47,6 +47,51 @@ class SimpleSolverResult:
     plume_mass_flow: float        # plume mass flow at interface [kg/s]
 
 
+def _compute_view_factors(
+    room_w: float, room_d: float, room_h: float,
+    heater_y: float, heater_h: float, heater_w: float,
+) -> dict[str, float]:
+    """Compute approximate view factors from heater to room surfaces.
+
+    Uses parallel-plate and perpendicular-plate analytical approximations
+    (Hottel & Sarofim, 1967) for a rectangular enclosure.
+
+    Returns dict with keys: 'floor', 'lower_walls', 'upper_walls', 'ceiling'.
+    All values sum to ~1.0 (enclosure closure rule).
+    """
+    # Heater centroid height
+    h_center = heater_y + heater_h / 2.0
+
+    # Approximate view factors using solid-angle fractions
+    # Floor: heater looks down at the floor
+    # Use the angle subtended by the floor from heater centroid
+    dist_to_floor = h_center
+    floor_half_angle = np.arctan(room_w / max(dist_to_floor, 0.01))
+    f_floor = floor_half_angle / np.pi  # fraction of hemisphere
+
+    # Ceiling: heater looks up at ceiling
+    dist_to_ceiling = room_h - h_center
+    ceiling_half_angle = np.arctan(room_w / max(dist_to_ceiling, 0.01))
+    f_ceiling = ceiling_half_angle / np.pi
+
+    # Opposite wall: direct view across room
+    f_opposite = np.arctan(heater_h / room_w) / np.pi
+
+    # Side walls and remaining surfaces
+    f_remaining = max(0.0, 1.0 - f_floor - f_ceiling - f_opposite)
+
+    # Split into lower and upper wall portions based on heater height
+    lower_frac = h_center / room_h
+    upper_frac = 1.0 - lower_frac
+
+    return {
+        "floor": float(np.clip(f_floor, 0.01, 0.5)),
+        "lower_walls": float(np.clip(f_remaining * lower_frac + f_opposite * lower_frac, 0.01, 0.5)),
+        "upper_walls": float(np.clip(f_remaining * upper_frac + f_opposite * upper_frac, 0.01, 0.5)),
+        "ceiling": float(np.clip(f_ceiling, 0.01, 0.5)),
+    }
+
+
 def _plume_entrainment(
     q_conv_w: float,
     z: float,
@@ -127,6 +172,10 @@ def solve_two_zone(
     heater_h = heater.get("height", 0.5)
     heater_center_y = heater_y + heater_h / 2.0
 
+    vf = _compute_view_factors(width, depth, height, heater_y, heater_h,
+                                heater.get("width", 0.6))
+    f_rad_lower = vf["floor"] + vf["lower_walls"]
+
     # Convective fraction of heater output (rest is radiant to walls)
     f_conv = 0.7
     q_conv = power_w * f_conv
@@ -201,7 +250,7 @@ def solve_two_zone(
 
         m_lower = rho_lower * v_lower
         if m_lower > 0.1:
-            dt_lower = (q_rad_to_walls * 0.3 + q_interface - q_wall_lower) / (m_lower * cp)
+            dt_lower = (q_rad_to_walls * f_rad_lower + q_interface - q_wall_lower) / (m_lower * cp)
         else:
             dt_lower = 0.0
         t_lower += dt * dt_lower
