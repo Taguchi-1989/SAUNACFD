@@ -527,11 +527,184 @@ PIMPLE (PISO + SIMPLE の融合) アルゴリズム。
 
 ---
 
+## 9. 既知の物理的制約とフェーズ拡張計画
+
+本節では、Phase 1 の方程式系に内在する物理的制約を明示し、
+Phase 2–3 で必要となる方程式拡張の具体的方針を示す。
+
+### 9.1 蒸気化による体積膨張の無視 (Phase 2 で致命的)
+
+**問題:** 現在の界面質量保存式は、乾燥空��のプルームのみを扱う。
+ロウリュ時に水 100 mL が気化すると、理想気体近似で約 170 L の蒸気が瞬時に生成される。
+一般的なサウナ室（体積 $V \sim 20$ m³）においてこの体積は無視できず、
+界面高さ $z_{\text{int}}$ を急激に押し下げる「ピストン効果」が生じる。
+現在の方程式にはこのソース項が存在しない。
+
+**拡張方針:** 界面質量保存式に気化体積生成速度を追加する:
+
+$$
+A_{\text{floor}} \, \frac{dz_{\text{int}}}{dt}
+= -\frac{\dot{m}_p}{\rho_{\text{upper}}} + \dot{V}_{\text{return}} - \dot{V}_{\text{steam}}
+$$
+
+ここで:
+
+$$
+\dot{V}_{\text{steam}} = \frac{\dot{m}_{\text{water}} \, R \, T_{\text{upper}}}{p \, M_{w,\text{H}_2\text{O}}}
+$$
+
+- $\dot{m}_{\text{water}}$: 水の蒸発速度 [kg/s]（ロウリュ投入量と蒸発モデルから決定）
+- $M_{w,\text{H}_2\text{O}} = 18.015$ g/mol
+- 蒸発速度のモデルは Spalding の質量移動理論を使用予定
+
+上層エネルギー保存式にも蒸発潜熱の寄与を追加する:
+
+$$
+Q_{\text{steam}} = \dot{m}_{\text{water}} \, L_v
+$$
+
+ここで $L_v = 2.26 \times 10^6$ J/kg（水の蒸発潜熱, 100°C）。
+この項は上層の温度を一時的に上昇させつつ、界面を押し下げ、
+湿度ピーク（K-03）と到達時間（K-04）の両方に影響する。
+
+### 9.2 アウフグース: ROM (低次元化モデル) によるハイブリッド・アプローチ (Phase 3)
+
+**問題:** 「簡易版では対応不可」では、シミュレータ���としての価値が不十分。
+0D モデルで速度場（タオルによるジェット流れ）を解くことは不可能だが、
+「上層の熱を強制的に下層へ引きずり下ろす」効果をパラメータ化することは可能。
+
+#### 拡張方針: ハイブリッド ROM (Reduced Order Model)
+
+1. **事前計算:** OpenFOAM で複数パターンのアウフグース（タオル振り周波数、振幅）を計算
+2. **パラメータ抽出:** 各条件における **層間強制混合係数 $\beta_{\text{aug}}$** [kg/s] を抽出。
+   $\beta_{\text{aug}}$ はタオルが生成する強制循環による層間質量交換率を表す
+3. **簡易版への統合:** アウフグース実行時のみ有効な強制混合項を追加:
+
+上層エネルギー保存:
+
+$$
+\rho_{\text{upper}} c_p V_{\text{upper}} \frac{dT_{\text{upper}}}{dt}
+= \cdots - \beta_{\text{aug}} \, c_p \, (T_{\text{upper}} - T_{\text{lower}})
+$$
+
+下層エネルギー保存:
+
+$$
+\rho_{\text{lower}} c_p V_{\text{lower}} \frac{dT_{\text{lower}}}{dt}
+= \cdots + \beta_{\text{aug}} \, c_p \, (T_{\text{upper}} - T_{\text{lower}})
+$$
+
+$\beta_{\text{aug}}$ は OpenFOAM の結果から次のように抽出:
+
+$$
+\beta_{\text{aug}} = \frac{\dot{Q}_{\text{forced}}}{ c_p (T_{\text{upper}} - T_{\text{lower}})}
+$$
+
+ここで $\dot{Q}_{\text{forced}}$ はアウフグースにより追加的に輸送された熱量（CFD 結果から計測）。
+これにより、計算負荷を上げずに「熱波が来る」現象を K-05（顔面風速ピーク）と
+K-06（簡易熱ストレス指標）に反映できる。
+
+### 9.3 正確版の多成分化: 組成浮力の導入 (Phase 2 で必須)
+
+**問題:** 現在の `pureMixture` + `perfectGas`（$M_w = 28.96$ 固定）は、
+水蒸気（$M_w = 18.015$）と乾燥空気の混合による密度変化を表現できない。
+ロウリュ時のプルーム急上昇は、温度差による **熱的浮力** に加え、
+蒸気濃度差による **組成浮力（solutal buoyancy）** の寄与が大きい。
+水蒸気は空気より軽い（$18/29 \approx 0.62$）ため、蒸気リッチなプルームは
+温度差だけで予測されるより速く上昇する。
+
+**拡張方針:** Phase 2 で熱物理モデルを変更:
+
+```c
+thermoType
+{
+    type            heRhoThermo;
+    mixture         multiComponentMixture;   // ← pureMixture から変更
+    transport       sutherland;              // ← 温度依存粘性
+    thermo          janaf;                   // ← 温度依存 Cp
+    equationOfState perfectGas;
+    specie          specie;
+    energy          sensibleEnthalpy;
+}
+```
+
+蒸気質量分率 $Y$ の輸送方程式を追加:
+
+$$
+\frac{\partial (\rho Y)}{\partial t} + \nabla \cdot (\rho \mathbf{U} Y)
+= \nabla \cdot (D_{\text{eff}} \nabla Y) + S_Y
+$$
+
+混合密度:
+
+$$
+\rho = \frac{p}{R T} \left( \frac{Y}{M_{w,\text{H}_2\text{O}}} + \frac{1-Y}{M_{w,\text{air}}} \right)^{-1}
+$$
+
+ここで $D_{\text{eff}} = D_{\text{mol}} + D_t$（分子拡散 + 乱流拡散）。
+$D_{\text{mol}} \approx 2.5 \times 10^{-5}$ m²/s（空気中の水蒸気拡散係数, 373K）。
+
+これにより密度が温度 $T$ と蒸気質量分率 $Y$ の両方に依存し、
+組成浮力が自動的に運動量方程式に反映される。
+
+### 9.4 輻射モデルの改善
+
+**問題:** 簡易版の下層エネルギー保存における $Q_{\text{rad}} \times 0.3$（固定係数）は
+以下の感度を失っている:
+
+- ストーブの配置（部屋の中央 vs 隅）
+- 部屋の形状・アスペクト比
+- ベンチや障害物による遮蔽
+
+サウナにおける人体の受熱量の半分以上は輻射によるものであり（特に高温域）、
+固定係数では熱ストレス指標（K-06）の空間的分布を正しく予測できない。
+
+**拡張方針 (簡易版):**
+
+ヒーター面を放射源、各受熱面（上部壁、下部壁、床、ベンチ）を受熱体とした
+**形態係数（View Factor）** を幾何学的に概算する:
+
+$$
+F_{ij} = \frac{1}{A_i} \int_{A_i} \int_{A_j} \frac{\cos\theta_i \cos\theta_j}{\pi r^2} dA_j dA_i
+$$
+
+簡易な直方体近似では、対向する平行平板の形態係数の解析解を利用できる
+（Hottel & Sarofim, 1967; Howell et al., "Thermal Radiation Heat Transfer", 6th ed.）。
+
+下層の輻射受熱を形態係数で置き換える:
+
+$$
+Q_{\text{rad,lower}} = Q_{\text{rad}} \times (F_{\text{heater} \to \text{floor}} + F_{\text{heater} \to \text{lower walls}})
+$$
+
+$Q_{\text{rad}} \times 0.3$ の代わりにこれを使用すれば、部屋の形状やヒーター配置の変更に対して
+自動的に輻射配分が変化する。
+
+**拡張方針 (OpenFOAM):**
+
+Phase 2 以降で輻射モデルを導入する:
+
+```c
+radiationModel  fvDOM;    // Finite Volume Discrete Ordinates Method
+// または
+radiationModel  viewFactor;  // 壁面間のみの輻射交換（計算コスト低）
+
+absorptionEmissionModel  greyMeanAbsorptionEmission;
+scatterModel    none;
+```
+
+特に高温域（$T > 100$ °C）では壁面輻射による二次加熱（ストーブ → 壁 → 空気層 → 反対側の壁）
+が自然対流の境界層形成に影響するため、Phase 2 では必須。
+`viewFactor` モデルは壁面間のみの輻射交換を計算するため、計算コストが低く
+PoC フェーズに適している。
+
+---
+
 ## 付録: フェーズ別の方程式拡張予定
 
 | フェーズ | OpenFOAM | 簡易版 | 備考 |
 |---------|----------|--------|------|
-| Phase 1 (現在) | 上記の非定常方程式 (buoyantPimpleFoam + SST k-omega) | 2-Zone プルームモデル | 温度成層の再現 |
-| Phase 2 (lolylu) | 蒸気輸送方程式 $\frac{\partial (\rho Y)}{\partial t} + \nabla \cdot (\rho \mathbf{U} Y) = \nabla \cdot (D_{\text{eff}} \nabla Y)$ | 拡張検討中 (2-Zone への蒸気層追加は限界あり) | 蒸気は対流支配のため簡易版での再現は困難 |
-| Phase 3 (Aufguss) | 運動量ソース項 (ジェット) | 簡易版では対応不可 | 速度場が必要 |
+| Phase 1 (現在) | buoyantPimpleFoam + SST k-omega, pureMixture | 2-Zone プルームモデル | 温度成層の再現 |
+| Phase 2 (löyly) | multiComponentMixture + 蒸気輸送 ($Y$) + fvDOM/viewFactor 輻射 | 蒸気体積膨張項 $\dot{V}_{\text{steam}}$ + 蒸発潜熱 $Q_{\text{steam}}$ + 形態係数輻射 | 組成浮力・ピストン効果・輻射加熱 |
+| Phase 3 (Aufguss) | 運動量ソース項 (ジェット) + 上記 Phase 2 の全モデル | ROM: 強制混合係数 $\beta_{\text{aug}}$ を CFD から抽出し適用 | ハイブリッド ROM アプローチ |
 | Phase 4-5 | 方程式追加なし | - | 実験データとの比較・自動化 |
