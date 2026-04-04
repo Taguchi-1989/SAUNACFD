@@ -14,6 +14,10 @@ boundary_conditions:
   walls:
     temperature: 293.15
     type: mixed
+    model: lumped
+    thickness: 0.02
+    conductivity: 0.12
+    rho_cp: 400000
   heater:
     power_kw: 9.0
     position:

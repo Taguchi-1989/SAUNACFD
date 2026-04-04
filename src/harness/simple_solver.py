@@ -48,6 +48,11 @@ class SimpleSolverResult:
     steam_mass_flow: float = 0.0      # peak evaporation rate [kg/s]
     total_steam_generated: float = 0.0 # cumulative steam mass [kg]
     beta_aug_applied: float = 0.0  # forced mixing coefficient used [kg/s]
+    wall_inner_temp: float = 293.15    # inner wall surface temperature [K]
+    humidity_ratio: float = 0.0        # kg vapor / kg dry air
+    relative_humidity: float = 0.0     # 0-1
+    perceived_temp_upper: float = 0.0  # perceived temp at upper layer [C]
+    perceived_temp_lower: float = 0.0  # perceived temp at lower layer [C]
 
 
 def _compute_view_factors(
@@ -149,6 +154,66 @@ def _evaporation_rate(
     return (water_mass_kg / tau_evap) * np.exp(-elapsed / tau_evap)
 
 
+def _humid_air_properties(t_k: float, humidity_ratio: float = 0.0) -> dict[str, float]:
+    """Compute humid air mixture properties.
+
+    Args:
+        t_k: Temperature [K].
+        humidity_ratio: kg water vapor per kg dry air (absolute humidity).
+
+    Returns:
+        dict with cp_mix, lambda_mix, h_wall_eff, and perceived_temp.
+    """
+    # Dry air properties
+    cp_air = 1005.0  # J/(kg*K)
+    lambda_air = 0.026  # W/(m*K) at ~350K
+
+    # Water vapor properties
+    cp_vapor = 1860.0  # J/(kg*K)
+    lambda_vapor = 0.025  # W/(m*K) at ~370K (slightly less than air)
+
+    # Mixture properties (mass-weighted)
+    w = humidity_ratio
+    y_vapor = w / (1.0 + w)  # vapor mass fraction
+    cp_mix = cp_air * (1.0 - y_vapor) + cp_vapor * y_vapor
+    lambda_mix = lambda_air * (1.0 - y_vapor) + lambda_vapor * y_vapor
+
+    # Effective h_wall: humid air has higher thermal capacity → stronger
+    # natural convection (Ra ∝ β * ΔT * cp * ρ² / (μ * λ))
+    # Simplified: h scales roughly as (cp_mix / cp_air)^0.25 * (lambda_mix / lambda_air)^0.75
+    h_ratio = (cp_mix / cp_air) ** 0.25 * (lambda_mix / lambda_air) ** 0.75
+    h_wall_eff = 8.0 * h_ratio
+
+    # Perceived temperature (simplified wet-bulb approximation)
+    # Humid air feels hotter because it impedes evaporative cooling from skin
+    # WBGT-like index: T_perceived ≈ T_dry + humidity_effect
+    t_c = t_k - 273.15
+    # Antoine equation for saturation pressure [Pa] at T [K]
+    if t_k > 273.15:
+        p_sat = 610.78 * np.exp(17.27 * t_c / (t_c + 237.3))
+    else:
+        p_sat = 610.78
+    # Relative humidity approximation (from humidity ratio)
+    p_atm = 101325.0
+    p_vapor = w * p_atm / (0.622 + w) if w > 0 else 0.0
+    rh = min(p_vapor / p_sat, 1.0) if p_sat > 0 else 0.0
+
+    # Simplified perceived temperature (Steadman 1979 heat index approximation)
+    if t_c > 27 and rh > 0.05:
+        perceived_c = t_c + 0.33 * (rh * p_sat / 1000.0) - 4.0
+    else:
+        perceived_c = t_c
+
+    return {
+        "cp_mix": cp_mix,
+        "lambda_mix": lambda_mix,
+        "h_wall_eff": h_wall_eff,
+        "humidity_ratio": w,
+        "relative_humidity": rh,
+        "perceived_temp_c": perceived_c,
+    }
+
+
 def solve_two_zone(
     case_yaml: Path,
     n_profile: int = 80,
@@ -231,14 +296,25 @@ def solve_two_zone(
     R_GAS = 8.314            # universal gas constant [J/(mol*K)]
     P_ATM = 101325.0         # atmospheric pressure [Pa]
 
-    # Wall heat transfer
-    h_wall = 8.0  # natural convection HTC [W/(m2*K)]
+    # Wall thermal model
+    wall_cfg = walls.get("model", "fixed")  # "fixed" or "lumped"
+    wall_thickness = walls.get("thickness", 0.02)  # wood panel [m]
+    wall_lambda = walls.get("conductivity", 0.12)  # wood thermal conductivity [W/(m*K)]
+    wall_rho_cp = walls.get("rho_cp", 0.4e6)  # wood volumetric heat capacity [J/(m3*K)]
+    h_wall_base = 8.0  # base natural convection HTC [W/(m2*K)]
+
     perimeter = 2 * (width + depth)
 
     # Initial state
-    t_upper = t_wall + 1.0   # upper layer starts near wall temp
-    t_lower = t_wall          # lower layer at wall temp
-    z_int = height * 0.95     # interface starts near ceiling
+    t_wall_inner = t_wall  # inner wall surface temperature (evolves if lumped model)
+    t_upper = t_wall + 1.0
+    t_lower = t_wall
+    z_int = height * 0.95
+    humidity_ratio = 0.0  # kg vapor / kg dry air
+
+    # Total wall area for lumped wall model
+    a_wall_total = 2 * (width * height + depth * height) + 2 * a_floor
+    wall_mass_cp = wall_rho_cp * wall_thickness * a_wall_total  # [J/K]
 
     residual_history = []
     converged = False
@@ -267,22 +343,23 @@ def solve_two_zone(
         z_plume = max(0.01, z_int - heater_center_y)
         m_plume, t_plume = _plume_entrainment(q_conv, z_plume, t_lower)
 
-        # --- Upper layer energy balance ---
-        # Heat input from plume
-        q_plume_in = m_plume * cp * (t_plume - t_upper)
+        # --- Humidity-dependent properties ---
+        props = _humid_air_properties(t_upper, humidity_ratio)
+        h_wall = props["h_wall_eff"]
+        cp_eff = props["cp_mix"]
 
-        # Wall heat loss from upper layer
-        # Upper layer contacts: ceiling + portion of side walls + portion of front/back
+        # --- Upper layer energy balance ---
+        q_plume_in = m_plume * cp_eff * (t_plume - t_upper)
+
         upper_height = height - z_int
-        a_wall_upper = perimeter * upper_height + a_floor  # sides + ceiling
-        q_wall_upper = h_wall * a_wall_upper * (t_upper - t_wall)
+        a_wall_upper = perimeter * upper_height + a_floor
+        q_wall_upper = h_wall * a_wall_upper * (t_upper - t_wall_inner)
 
         # Radiative loss from heater to walls (non-convective fraction)
         q_rad_to_walls = power_w * (1.0 - f_conv)
 
-        # Upper layer temperature change
         m_upper = rho_upper * v_upper
-        dt_upper = (q_plume_in - q_wall_upper) / (m_upper * cp) if m_upper > 0.1 else 0.0
+        dt_upper = (q_plume_in - q_wall_upper) / (m_upper * cp_eff) if m_upper > 0.1 else 0.0
         t_upper += dt * dt_upper
 
         # Steam injection (löyly)
@@ -294,7 +371,11 @@ def solve_two_zone(
 
             # Latent heat adds energy to upper layer
             q_steam = m_dot_steam * L_VAPORIZATION
-            t_upper += dt * q_steam / (m_upper * cp) if m_upper > 0.1 else 0.0
+            t_upper += dt * q_steam / (m_upper * cp_eff) if m_upper > 0.1 else 0.0
+
+            # Update humidity ratio (vapor added to upper layer air mass)
+            if m_upper > 0.1:
+                humidity_ratio += m_dot_steam * dt / m_upper
 
             # Steam volume expansion pushes interface down
             v_steam = m_dot_steam * R_GAS * t_upper / (P_ATM * MW_STEAM)
@@ -307,8 +388,8 @@ def solve_two_zone(
         # --- Lower layer energy balance ---
         # Lower layer receives heat from: wall radiation, conduction from upper
         # Lower layer loses heat to: plume entrainment, floor, lower walls
-        a_wall_lower = perimeter * z_int + a_floor  # sides + floor
-        q_wall_lower = h_wall * a_wall_lower * (t_lower - t_wall)
+        a_wall_lower = perimeter * z_int + a_floor
+        q_wall_lower = h_wall * a_wall_lower * (t_lower - t_wall_inner)
 
         # Conductive exchange across interface (small)
         k_interface = 0.5  # effective interface conductivity [W/(m*K)]
@@ -319,7 +400,7 @@ def solve_two_zone(
 
         m_lower = rho_lower * v_lower
         if m_lower > 0.1:
-            dt_lower = (q_rad_to_walls * f_rad_lower + q_interface - q_wall_lower) / (m_lower * cp)
+            dt_lower = (q_rad_to_walls * f_rad_lower + q_interface - q_wall_lower) / (m_lower * cp_eff)
         else:
             dt_lower = 0.0
         t_lower += dt * dt_lower
@@ -330,14 +411,25 @@ def solve_two_zone(
         # At steady state these balance
         v_plume_flow = m_plume / max(rho_upper, 0.5)  # volume flow into upper
         dt_layers = max(t_upper - t_lower, 1.0)
-        v_return = h_wall * a_wall_upper * (t_upper - t_wall) / (rho_upper * cp * dt_layers)
+        v_return = h_wall * a_wall_upper * (t_upper - t_wall_inner) / (rho_upper * cp_eff * dt_layers)
         dz_int = (-v_plume_flow + v_return - v_steam) / a_floor
         z_int += dt * dz_int
 
         # Clamp
         z_int = np.clip(z_int, 0.05 * height, 0.95 * height)
-        t_upper = np.clip(t_upper, t_wall, t_wall + 200)
+        t_upper = np.clip(t_upper, t_wall_inner, t_wall_inner + 200)
         t_lower = np.clip(t_lower, t_wall - 1, t_upper)
+
+        # --- Lumped wall temperature evolution ---
+        # Wall absorbs heat from air (convection) and heater (radiation)
+        # Wall loses heat to outside through conduction
+        if wall_cfg == "lumped" and wall_mass_cp > 0:
+            q_to_wall = (q_wall_upper + q_wall_lower)  # heat from air to wall
+            q_rad_wall = q_rad_to_walls * (1.0 - f_rad_lower)  # radiation to upper walls
+            q_out = wall_lambda / wall_thickness * a_wall_total * (t_wall_inner - t_wall)
+            dt_wall = (q_to_wall + q_rad_wall - q_out) / wall_mass_cp
+            t_wall_inner += dt * dt_wall
+            t_wall_inner = np.clip(t_wall_inner, t_wall, t_wall + 200)
 
         # Aufguss forced mixing (ROM: transfers heat from upper to lower)
         if beta_aug > 0 and aufguss_start <= pseudo_time <= aufguss_start + aufguss_duration:
@@ -346,8 +438,7 @@ def solve_two_zone(
                 t_upper -= dt * q_mix / (m_upper * cp)
             if m_lower > 0.1:
                 t_lower += dt * q_mix / (m_lower * cp)
-            # Re-clamp after mixing
-            t_upper = np.clip(t_upper, t_wall, t_wall + 200)
+            t_upper = np.clip(t_upper, t_wall_inner, t_wall_inner + 200)
             t_lower = np.clip(t_lower, t_wall - 1, t_upper)
 
         # Convergence check
@@ -388,6 +479,10 @@ def solve_two_zone(
         idx = int(np.clip(py / dy, 0, n_profile - 1))
         probe_values[p["name"]] = float(temperatures[idx])
 
+    # Compute final perceived temperatures
+    props_upper = _humid_air_properties(t_upper, humidity_ratio)
+    props_lower = _humid_air_properties(t_lower, humidity_ratio * 0.3)
+
     return SimpleSolverResult(
         y_positions=y,
         temperatures=temperatures,
@@ -402,6 +497,11 @@ def solve_two_zone(
         steam_mass_flow=float(peak_steam_rate),
         total_steam_generated=float(total_steam),
         beta_aug_applied=float(beta_aug) if aufguss else 0.0,
+        wall_inner_temp=float(t_wall_inner),
+        humidity_ratio=float(humidity_ratio),
+        relative_humidity=float(props_upper["relative_humidity"]),
+        perceived_temp_upper=float(props_upper["perceived_temp_c"]),
+        perceived_temp_lower=float(props_lower["perceived_temp_c"]),
     )
 
 
