@@ -128,7 +128,16 @@ def report(case_dir: str, case_yaml: str) -> None:
         baseline_temp = t_upper_series[0]
 
     beta_aug = data.get("aufguss", {}).get("beta_aug", 0.0)
-    perceived_temp_c = max(values.get("upper_bench", 273.15) - 273.15, 0.0)
+
+    # Compute perceived temperature accounting for humidity
+    t_upper_k = values.get("upper_bench", 293.15)
+    loyly_data = data.get("loyly", {})
+    water_ml = loyly_data.get("water_ml", 0)
+    # Rough humidity estimate for CLI path (full evaporation assumed)
+    humidity_est = (water_ml / 1000.0) / 1.0 if water_ml > 0 else 0.0  # ~1 kg air mass
+    from harness.simple_solver import _humid_air_properties
+    perceived_props = _humid_air_properties(t_upper_k, humidity_est)
+    perceived_temp_c = perceived_props["perceived_temp_c"]
     kpis = evaluate_all_kpis(
         probe_values=values,
         t_upper_series=t_upper_series,
@@ -160,7 +169,12 @@ def report(case_dir: str, case_yaml: str) -> None:
     exp_times = exp_data.get("time")
     for name in probe_names:
         if name in exp_data:
-            exp_values[name] = time_average(exp_data[name], exp_times) if exp_times is not None else float(exp_data[name][-1])
+            if exp_times is not None and len(exp_times) > 1:
+                # Use the last 50% of experimental data (steady-state region)
+                t_mid = (exp_times[0] + exp_times[-1]) / 2.0
+                exp_values[name] = time_average(exp_data[name], exp_times, start=t_mid)
+            else:
+                exp_values[name] = float(exp_data[name][-1])
 
     report_obj = compare_probes(values, exp_values, case_name=data["case"]["name"])
     validation_dir = case_path / "validation"

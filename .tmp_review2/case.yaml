@@ -1,0 +1,43 @@
+boundary_conditions:
+  heater:
+    height: 0.5
+    position:
+      x: 0.0
+      y: 0.1
+      z: 1.25
+    power_kw: 9.0
+    width: 0.6
+  walls:
+    temperature: 293.15
+    type: mixed
+case:
+  description: ''
+  name: steady_steam
+  type: steady
+geometry:
+  dimensions:
+    x: 3.0
+    y: 2.5
+    z: 2.5
+  mesh_level: M0
+loyly:
+  tau_evap: 5.0
+  time: 1000.0
+  water_ml: 500
+probes:
+- name: upper_bench
+  position:
+    x: 1.5
+    y: 2.0
+    z: 1.25
+- name: lower_bench
+  position:
+    x: 1.5
+    y: 0.8
+    z: 1.25
+solver:
+  averaging_start: 150
+  delta_t: 0.05
+  end_time: 300
+  name: buoyantPimpleFoam
+  write_interval: 10

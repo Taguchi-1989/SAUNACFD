@@ -488,21 +488,20 @@ def solve_two_zone(
         dt_upper = (q_plume_in - q_wall_upper) / (m_upper * cp_eff) if m_upper > 0.1 else 0.0
         t_upper += dt * dt_upper
 
-        # Steam injection (löyly) — steady-state treatment
-        # In the steady-state solver, we model the FINAL state after all water
-        # has evaporated. The latent heat and humidity are computed from total
-        # water mass, not from a transient evaporation rate.
-        if water_kg > 0 and not steam_applied:
-            # Apply all steam energy and humidity once, early in the iteration
-            if iteration == 50:  # after initial transients settle
+        # Steam (löyly) — steady-state treatment
+        # The steady-state solver finds the equilibrium AFTER all water has
+        # evaporated. We set the humidity from the total water mass and add
+        # the latent heat as an impulse at iteration 0. The solver then
+        # converges to the post-löyly steady state.
+        if water_kg > 0:
+            if not steam_applied:
                 q_steam_total = water_kg * L_VAPORIZATION
                 t_upper += q_steam_total / (m_upper * cp_eff) if m_upper > 0.1 else 0.0
                 humidity_ratio = water_kg / max(m_upper, 0.1)
                 total_steam = water_kg
-                peak_steam_rate = water_kg / tau_evap  # peak instantaneous rate
+                peak_steam_rate = water_kg / tau_evap
                 steam_applied = True
-
-            v_steam = 0.0  # no ongoing volume expansion at steady state
+            v_steam = 0.0
             m_dot_steam = 0.0
         else:
             m_dot_steam = 0.0
@@ -730,7 +729,10 @@ def solve_transient(
     m_plume = 0.0
 
     while current_time < end_time - 1e-9:
+        # Limit dt_step so we never skip a record point
         dt_step = min(physical_dt, end_time - current_time)
+        if record_idx < n_records and current_time + dt_step > next_record_time + 1e-9:
+            dt_step = max(next_record_time - current_time, 1e-6)
         current_time += dt_step
 
         # Layer volumes
@@ -768,18 +770,23 @@ def solve_transient(
         dt_upper = (q_plume_in - q_wall_upper) / (m_upper * cp_eff) if m_upper > 0.1 else 0.0
         t_upper += dt_step * dt_upper
 
-        # Steam injection (loyly)
-        if water_kg > 0 and current_time >= loyly_time:
-            elapsed = current_time - loyly_time
-            m_dot_steam = _evaporation_rate(water_kg, elapsed, tau_evap)
+        # Steam injection (loyly) — interval-integrated evaporation
+        if water_kg > 0 and current_time >= loyly_time and total_steam < water_kg:
+            t0 = max(current_time - dt_step, loyly_time) - loyly_time
+            t1 = current_time - loyly_time
+            # Integral of (water_kg/tau)*exp(-t/tau) from t0 to t1
+            # = water_kg * (exp(-t0/tau) - exp(-t1/tau))
+            mass_evap = water_kg * (np.exp(-t0 / tau_evap) - np.exp(-t1 / tau_evap))
+            mass_evap = min(mass_evap, water_kg - total_steam)  # cap at remaining
+            m_dot_steam = mass_evap / dt_step if dt_step > 1e-9 else 0.0
             peak_steam_rate = max(peak_steam_rate, m_dot_steam)
-            total_steam += m_dot_steam * dt_step
+            total_steam += mass_evap
 
-            q_steam = m_dot_steam * L_VAPORIZATION
-            t_upper += dt_step * q_steam / (m_upper * cp_eff) if m_upper > 0.1 else 0.0
+            q_steam = mass_evap * L_VAPORIZATION  # total energy this step
+            t_upper += q_steam / (m_upper * cp_eff) if m_upper > 0.1 else 0.0
 
             if m_upper > 0.1:
-                humidity_ratio += m_dot_steam * dt_step / m_upper
+                humidity_ratio += mass_evap / m_upper
 
             v_steam = m_dot_steam * R_GAS * t_upper / (P_ATM * MW_STEAM)
         else:
