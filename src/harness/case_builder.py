@@ -22,10 +22,15 @@ _MESH_DENSITY: dict[str, int] = {
 }
 
 
-def _clamp_patch_start(start: float, size: float, limit: float) -> float:
-    """Shift a patch start coordinate into the domain without shrinking it."""
-    effective_size = min(size, limit)
-    return min(max(0.0, start), limit - effective_size)
+def _validate_positive_patch_size(size: float, limit: float, axis_name: str) -> float:
+    """Validate that a heater patch size fits inside the domain."""
+    if size <= 0:
+        raise ValueError(f"Heater {axis_name} must be positive, got {size}.")
+    if size > limit:
+        raise ValueError(
+            f"Heater {axis_name}={size} exceeds domain {axis_name}={limit}."
+        )
+    return size
 
 
 def _unique_points(points: list[float]) -> list[float]:
@@ -73,15 +78,32 @@ def _build_block_mesh_context(geometry: dict, boundary_conditions: dict) -> dict
     dims = geometry["dimensions"]
     heater = boundary_conditions.get("heater", {})
 
-    raw_width = heater.get("width", 0.5)
-    raw_height = heater.get("height", 0.5)
-    width = min(raw_width, dims["z"])
-    height = min(raw_height, dims["y"])
+    width = _validate_positive_patch_size(
+        heater.get("width", 0.5), dims["z"], "width"
+    )
+    height = _validate_positive_patch_size(
+        heater.get("height", 0.5), dims["y"], "height"
+    )
 
     position = heater.get("position", {})
-    y0 = _clamp_patch_start(position.get("y", 0.0), height, dims["y"])
+    x_pos = position.get("x", 0.0)
+    if abs(x_pos) > 1e-9:
+        raise ValueError(
+            "Phase 1 heater must be mounted on the x=0 wall, so heater.position.x must be 0."
+        )
+    y0 = position.get("y", 0.0)
+    if y0 < 0 or y0 + height > dims["y"]:
+        raise ValueError(
+            f"Heater y-range [{y0}, {y0 + height}] must stay within [0, {dims['y']}]."
+        )
     y1 = y0 + height
-    z0 = _clamp_patch_start(position.get("z", dims["z"] / 2) - width / 2, width, dims["z"])
+    z_center = position.get("z", dims["z"] / 2)
+    z0 = z_center - width / 2
+    z1 = z_center + width / 2
+    if z0 < 0 or z1 > dims["z"]:
+        raise ValueError(
+            f"Heater z-range [{z0}, {z1}] must stay within [0, {dims['z']}]."
+        )
     z1 = z0 + width
 
     y_points = _unique_points([0.0, y0, y1, dims["y"]])
@@ -194,8 +216,12 @@ def compute_heater_params(boundary_conditions: dict, geometry: dict) -> dict:
     """
     heater = boundary_conditions.get("heater", {})
     power_kw = heater.get("power_kw", 9.0)
-    width = min(heater.get("width", 0.5), geometry["dimensions"]["z"])
-    height = min(heater.get("height", 0.5), geometry["dimensions"]["y"])
+    width = _validate_positive_patch_size(
+        heater.get("width", 0.5), geometry["dimensions"]["z"], "width"
+    )
+    height = _validate_positive_patch_size(
+        heater.get("height", 0.5), geometry["dimensions"]["y"], "height"
+    )
     heater_area = width * height
     heat_flux = (power_kw * 1000.0) / heater_area
 

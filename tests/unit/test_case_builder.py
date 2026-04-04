@@ -122,6 +122,36 @@ class TestBuildCase:
         with pytest.raises(ValueError, match="Schema validation failed"):
             build_case(bad_yaml, output_dir=tmp_path / "out")
 
+    def test_oversized_heater_raises(self, sample_case_path: Path, tmp_path: Path) -> None:
+        import pytest
+
+        bad_yaml = tmp_path / "bad_heater.yaml"
+        text = sample_case_path.read_text(encoding="utf-8").replace("width: 0.6", "width: 3.5")
+        bad_yaml.write_text(text, encoding="utf-8")
+
+        with pytest.raises(ValueError, match="Heater width"):
+            build_case(bad_yaml, output_dir=tmp_path / "out")
+
+    def test_out_of_bounds_heater_raises(self, sample_case_path: Path, tmp_path: Path) -> None:
+        import pytest
+
+        bad_yaml = tmp_path / "bad_heater_position.yaml"
+        text = sample_case_path.read_text(encoding="utf-8").replace("z: 1.25", "z: 2.4", 1)
+        bad_yaml.write_text(text, encoding="utf-8")
+
+        with pytest.raises(ValueError, match="Heater z-range"):
+            build_case(bad_yaml, output_dir=tmp_path / "out")
+
+    def test_non_wall_heater_x_raises(self, sample_case_path: Path, tmp_path: Path) -> None:
+        import pytest
+
+        bad_yaml = tmp_path / "bad_heater_x.yaml"
+        text = sample_case_path.read_text(encoding="utf-8").replace("x: 0.0", "x: 0.5", 1)
+        bad_yaml.write_text(text, encoding="utf-8")
+
+        with pytest.raises(ValueError, match="boundary_conditions.heater.position.x must be 0"):
+            build_case(bad_yaml, output_dir=tmp_path / "out")
+
     def test_overwrites_existing(self, sample_case_path: Path, tmp_path: Path) -> None:
         out = tmp_path / "test_case"
         build_case(sample_case_path, output_dir=out)

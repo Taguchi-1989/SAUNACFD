@@ -31,7 +31,17 @@ def validate_case(data: dict) -> list[str]:
     """
     schema = _load_schema()
     validator = jsonschema.Draft202012Validator(schema)
-    return [err.message for err in validator.iter_errors(data)]
+    errors: list[str] = []
+    for err in validator.iter_errors(data):
+        path = ".".join(str(part) for part in err.absolute_path)
+        if err.validator == "const" and path:
+            errors.append(f"{path} must be {err.validator_value}")
+            continue
+        if path:
+            errors.append(f"{path}: {err.message}")
+            continue
+        errors.append(err.message)
+    return errors
 
 
 def load_and_validate(path: str | Path) -> list[str]:
