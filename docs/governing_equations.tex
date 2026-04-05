@@ -90,13 +90,15 @@ $
 
 \subsubsection{2.2 運動量保存 (Navier-Stokes)}
 
-$
+\begin{align*}
 \frac{\partial (\rho \mathbf{U})}{\partial t}
 + \nabla \cdot (\rho \mathbf{U} \otimes \mathbf{U})
-= -\nabla p_{rgh}
-+ \nabla \cdot \left[ \mu_{\text{eff}} \left( \nabla \mathbf{U} + (\nabla \mathbf{U})^T - \frac{2}{3} (\nabla \cdot \mathbf{U}) \mathbf{I} \right) \right]
-+ \rho \mathbf{g}
-$
+&= -\nabla p_{rgh} + \rho \mathbf{g} \\
+&\quad + \nabla \cdot \left[ \mu_{\text{eff}} \left(
+  \nabla \mathbf{U} + (\nabla \mathbf{U})^T
+  - \tfrac{2}{3} (\nabla \cdot \mathbf{U}) \mathbf{I}
+\right) \right]
+\end{align*}
 
 ここで:
 
@@ -324,12 +326,12 @@ $
 
 \paragraph{上層エネルギー保存}
 
-$
+\begin{align*}
 \rho_{\text{upper}} \, c_p \, V_{\text{upper}} \, \frac{dT_{\text{upper}}}{dt}
-= \underbrace{\dot{m}_p \, c_p \, (T_{\text{plume}} - T_{\text{upper}})}_{\text{プルームからの熱入力}}
-- \underbrace{h_{\text{wall}} \, A_{\text{wall,upper}} \, (T_{\text{upper}} - T_{\text{wall}})}_{\text{壁面熱損失}}
-+ \underbrace{Q_{\text{rad}} \, F_{\text{upper}}}_{\text{ヒーター輻射 (fixed wall時)}}
-$
+&= \underbrace{\dot{m}_p \, c_p \, (T_{\text{plume}} - T_{\text{upper}})}_{\text{プルームからの熱入力}} \\
+&\quad - \underbrace{h_{\text{wall}} \, A_{\text{wall,upper}} \, (T_{\text{upper}} - T_{\text{wall}})}_{\text{壁面熱損失}} \\
+&\quad + \underbrace{Q_{\text{rad}} \, F_{\text{upper}}}_{\text{ヒーター輻射 (fixed wall時)}}
+\end{align*}
 
 ここで $F_{\text{upper}} = F_{\text{ceiling}} + F_{\text{upper\_walls}}$ はヒーターから上層壁面への形態係数の合計。
 \texttt{model: lumped} の場合、輻射は壁面集中定数モデル（付録C）を経由して
@@ -343,12 +345,12 @@ $
 
 \paragraph{下層エネルギー保存}
 
-$
+\begin{align*}
 \rho_{\text{lower}} \, c_p \, V_{\text{lower}} \, \frac{dT_{\text{lower}}}{dt}
-= \underbrace{Q_{\text{rad}} \times 0.3}_{\text{輻射受熱}}
-+ \underbrace{k_{\text{int}} \, A_{\text{floor}} \, \frac{T_{\text{upper}} - T_{\text{lower}}}{0.1 H}}_{\text{界面伝導}}
-- \underbrace{h_{\text{wall}} \, A_{\text{wall,lower}} \, (T_{\text{lower}} - T_{\text{wall}})}_{\text{壁面熱損失}}
-$
+&= \underbrace{Q_{\text{rad}} \times F_{\text{lower}}}_{\text{輻射受熱}} \\
+&\quad + \underbrace{k_{\text{int}} \, A_{\text{floor}} \, \frac{T_{\text{upper}} - T_{\text{lower}}}{0.1 H}}_{\text{界面伝導}} \\
+&\quad - \underbrace{h_{\text{wall}} \, A_{\text{wall,lower}} \, (T_{\text{lower}} - T_{\text{wall}})}_{\text{壁面熱損失}}
+\end{align*}
 
 ここで:
 
@@ -490,12 +492,12 @@ $
 
 OpenFOAM は有限体積法 (FVM) で各セルのエネルギー収支を解く:
 
-$
-\underbrace{\frac{\partial}{\partial t} \int_{V_P} \rho h \, dV}_{\text{蓄熱}}
-+ \underbrace{\sum_f (\rho \mathbf{U} h)_f \cdot \mathbf{S}_f}_{\text{対流フラックス}}
-= \underbrace{\sum_f (\alpha_{\text{eff}} \nabla T)_f \cdot \mathbf{S}_f}_{\text{拡散フラックス}}
+\begin{align*}
+&\underbrace{\frac{\partial}{\partial t} \int_{V_P} \rho h \, dV}_{\text{蓄熱}}
++ \underbrace{\sum_f (\rho \mathbf{U} h)_f \cdot \mathbf{S}_f}_{\text{対流フラックス}} \\
+&\quad = \underbrace{\sum_f (\alpha_{\text{eff}} \nabla T)_f \cdot \mathbf{S}_f}_{\text{拡散フラックス}}
 + \underbrace{q \cdot V_P}_{\text{体積熱源}}
-$
+\end{align*}
 
 \begin{itemize} \item $f$: セル面, $\mathbf{S}_f$: 面積ベクトル \end{itemize}
 \begin{itemize} \item $V_P$: セル体積 \end{itemize}
@@ -1079,12 +1081,13 @@ K-07 & 上下相対温度差 & プローブ定常値 & \textbf{済} (\texttt{kpi
 
 壁面内面温度 $T_{\text{wall,inner}}$ を状態変数として追加:
 
-$
+\begin{align*}
 (\rho c_p)_w \, \delta_w \, A_{\text{wall}} \, \frac{dT_{\text{wall,inner}}}{dt}
-= \underbrace{Q_{\text{conv→wall}}}_{\text{空気→壁面対流}}
-+ \underbrace{Q_{\text{rad→wall}}}_{\text{ヒーター輻射}}
-- \underbrace{\frac{\lambda_w}{\delta_w} A_{\text{wall}} (T_{\text{wall,inner}} - T_{\text{wall,outer}})}_{\text{壁面→外部熱伝導}}
-$
+&= \underbrace{Q_{\text{conv→wall}}}_{\text{空気→壁面対流}}
++ \underbrace{Q_{\text{rad→wall}}}_{\text{ヒーター輻射}} \\
+&\quad - \underbrace{\frac{\lambda_w}{\delta_w} A_{\text{wall}}
+  (T_{\text{wall,inner}} - T_{\text{wall,outer}})}_{\text{壁面→外部熱伝導}}
+\end{align*}
 
 パラメータ:
 
