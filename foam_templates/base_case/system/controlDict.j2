@@ -16,7 +16,7 @@ stopAt          endTime;
 
 endTime         {{ end_time }};
 
-deltaT          {{ delta_t }};
+deltaT          {{ delta_t_initial | default(0.001) }};
 
 writeControl    adjustableRunTime;
 
@@ -39,9 +39,9 @@ runTimeModifiable true;
 {% if solver_name == "buoyantPimpleFoam" %}
 adjustTimeStep  yes;
 
-maxCo           0.5;
+maxCo           0.3;
 
-maxDeltaT       {{ delta_t }};
+maxDeltaT       {{ max_delta_t | default(0.5) }};
 {% endif %}
 
 functions
