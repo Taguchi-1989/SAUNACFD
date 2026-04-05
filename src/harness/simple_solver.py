@@ -95,17 +95,23 @@ def _compute_view_factors(
     # Ceiling: angle subtended looking UP from heater
     dist_ceil = max(room_h - h_center, 0.01)
 
+    # Heater is on the wall (x=0 face, width = room_d direction).
+    # heater_w is the heater width along the wall (room_d direction).
+    # A wider heater illuminates more of each surface.
+    # Scale the characteristic length by heater coverage fraction.
+    heater_coverage = min(heater_w / max(room_d, 0.01), 1.0)
+    # Wider heater → larger effective radiating solid angle
+    # Blend between point source (coverage→0) and full-wall source (coverage→1)
+    coverage_factor = 0.3 + 0.7 * heater_coverage  # [0.3, 1.0]
+
     # Solid-angle fraction ≈ atan(characteristic_length / distance) / pi
-    # Characteristic length for floor/ceiling is the room diagonal projected
     char_len = np.sqrt(room_w**2 + room_d**2) / 2.0
 
-    f_floor_raw = np.arctan(char_len / dist_floor) / np.pi
-    f_ceiling_raw = np.arctan(char_len / dist_ceil) / np.pi
+    f_floor_raw = np.arctan(char_len / dist_floor) / np.pi * coverage_factor
+    f_ceiling_raw = np.arctan(char_len / dist_ceil) / np.pi * coverage_factor
 
-    # Opposite wall fraction — wider heater subtends larger solid angle
-    # Use heater frontal area (h * w) vs room cross-section (h * room_w)
-    heater_aspect = heater_w / max(room_d, 0.01)  # fraction of wall width covered
-    f_opposite = np.arctan(heater_h / max(room_w, 0.01)) / np.pi * min(heater_aspect + 0.5, 1.0)
+    # Opposite wall fraction — vertical angle times horizontal coverage
+    f_opposite = np.arctan(heater_h / max(room_w, 0.01)) / np.pi * coverage_factor
 
     # Remaining goes to side walls, split by position relative to heater
     f_sum = f_floor_raw + f_ceiling_raw + f_opposite
@@ -718,13 +724,12 @@ def solve_two_zone(
 
         # Steam (löyly) — steady-state treatment
         # Latent heat is drawn FROM the heater/stones, not created.
-        # Humidity is recomputed each iteration using current m_upper,
-        # so it reflects the pseudo-steady state after the event, not
-        # the initial (potentially thin) upper layer mass.
+        # Humidity is set ONCE when steam is first applied, then evolves
+        # via ventilation dilution. This avoids resetting each iteration
+        # which would defeat ventilation's dehumidification effect.
         if water_kg > 0:
-            # Recompute humidity ratio with current upper layer mass
-            humidity_ratio = water_kg / max(m_upper, 0.1)
             if not steam_applied:
+                humidity_ratio = water_kg / max(m_upper, 0.1)
                 total_steam = water_kg
                 peak_steam_rate = water_kg / tau_evap
                 steam_applied = True
@@ -1182,7 +1187,10 @@ def solve_transient(
     perceived_upper_arr = perceived_upper_arr[:record_idx]
 
     total_steam = min(total_steam, water_kg) if water_kg > 0 else 0.0
-    beta_aug_applied = beta_aug if beta_aug > 0 else 0.0
+    # Report beta_aug only if Aufguss window actually overlapped with simulation time
+    aufguss_end = aufguss_start + aufguss_duration
+    aufguss_was_active = beta_aug > 0 and aufguss_start < end_time and aufguss_end > 0
+    beta_aug_applied = beta_aug if aufguss_was_active else 0.0
 
     # Use time-averaged values from the last 25% of the simulation for summary,
     # rather than instantaneous final values which can be noisy.
