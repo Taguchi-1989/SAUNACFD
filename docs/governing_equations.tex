@@ -171,6 +171,13 @@ $
 + 2(1 - F_1) \frac{\rho \sigma_{\omega 2}}{\omega} \nabla k \cdot \nabla \omega
 $
 
+\textbf{$\omega$ 方程式における浮力項の扱い:}
+現在の実装では $G_b$ は $k$ 方程式にのみ注入し、$\omega$ 方程式への浮力項（$C_3 \gamma G_b / \nu_t$ 等）は
+未追加である。これは OpenFOAM 標準の \texttt{kOmegaSST} が $\omega$ に対する
+浮力ソースを持たない設計に準じている。
+強い成層下では $\omega$ 方程式への浮力散逸項が界面の乱流抑制精度に影響するため、
+Phase 2 以降で \texttt{buoyancyDissipation} の有効化を検討する。
+
 \textbf{乱流粘性:}
 
 $
@@ -321,7 +328,12 @@ $
 \rho_{\text{upper}} \, c_p \, V_{\text{upper}} \, \frac{dT_{\text{upper}}}{dt}
 = \underbrace{\dot{m}_p \, c_p \, (T_{\text{plume}} - T_{\text{upper}})}_{\text{プルームからの熱入力}}
 - \underbrace{h_{\text{wall}} \, A_{\text{wall,upper}} \, (T_{\text{upper}} - T_{\text{wall}})}_{\text{壁面熱損失}}
++ \underbrace{Q_{\text{rad}} \, F_{\text{upper}}}_{\text{ヒーター輻射 (fixed wall時)}}
 $
+
+ここで $F_{\text{upper}} = F_{\text{ceiling}} + F_{\text{upper\_walls}}$ はヒーターから上層壁面への形態係数の合計。
+\texttt{model: lumped} の場合、輻射は壁面集中定数モデル（付録C）を経由して
+壁内面温度 $T_{\text{wall,inner}}$ を加熱し、間接的に上層空気を温めるため、この直接項は 0 となる。
 
 ここで:
 
@@ -943,7 +955,7 @@ $
 
 \begin{itemize} \item $C_d A_{\text{eff}} = \min(C_{d,s} A_s, \, C_{d,e} A_e)$: 有効開口面積（流量は狭い方で制限） \end{itemize}
 \begin{itemize} \item $\rho_{\text{supply}}$: 給気口位置の空気密度 [kg/m³] \end{itemize}
-\begin{itemize} \item $\dot{m}_{\text{vent}} \ge 0$: 自然換気では正（流入）方向のみ \end{itemize}
+\begin{itemize} \item $\dot{m}_{\text{vent}}$: 正（流入）が通常だが、ロウリュ蒸気膨張時の室内圧上昇で負（逆流＝排出）も許容 \end{itemize}
 
 \subsubsection{10.4 エネルギー保存への寄与}
 

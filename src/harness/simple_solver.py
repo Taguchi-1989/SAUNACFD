@@ -333,9 +333,9 @@ def _ventilation_flow(
     if delta_p < 0:
         m_dot = -m_dot
 
-    # Only positive (inflow) makes physical sense for natural ventilation
-    # when sauna interior is hotter than ambient
-    return max(m_dot, 0.0)
+    # Allow negative (outflow through supply) during transient pressure events
+    # e.g., löyly steam expansion can momentarily reverse supply flow
+    return m_dot
 
 
 def _humid_air_properties(
@@ -581,6 +581,7 @@ def solve_two_zone(
     # View factor radiation model
     vf = _compute_view_factors(width, depth, height, heater_y, heater_h, heater_w)
     f_rad_lower = vf["floor"] + vf["lower_walls"]
+    f_rad_upper = vf["ceiling"] + vf["upper_walls"]
     f_body = vf["body"]
 
     # Löyly (steam) parameters
@@ -697,8 +698,11 @@ def solve_two_zone(
         # Radiative loss from heater to walls (non-convective fraction)
         q_rad_to_walls = power_w * (1.0 - f_conv)
 
+        # Radiation to upper zone (fixed wall: direct to air; lumped: via wall model)
+        q_rad_to_upper = 0.0 if wall_cfg == "lumped" else q_rad_to_walls * f_rad_upper
+
         m_upper = rho_upper * v_upper
-        dt_upper = (q_plume_in - q_wall_upper + q_vent_upper) / (m_upper * cp_eff) if m_upper > 0.1 else 0.0
+        dt_upper = (q_plume_in - q_wall_upper + q_vent_upper + q_rad_to_upper) / (m_upper * cp_eff) if m_upper > 0.1 else 0.0
         t_upper += dt * dt_upper
 
         # Steam (löyly) — steady-state treatment
@@ -781,11 +785,11 @@ def solve_two_zone(
         # Aufguss forced mixing (ROM: transfers heat from upper to lower)
         # In steady-state solver, aufguss is always active (no physical time)
         if beta_aug > 0:
-            q_mix = beta_aug * cp * (t_upper - t_lower)
+            q_mix = beta_aug * cp_eff * (t_upper - t_lower)
             if m_upper > 0.1:
-                t_upper -= dt * q_mix / (m_upper * cp)
+                t_upper -= dt * q_mix / (m_upper * cp_eff)
             if m_lower > 0.1:
-                t_lower += dt * q_mix / (m_lower * cp)
+                t_lower += dt * q_mix / (m_lower * cp_eff)
             t_upper = np.clip(t_upper, t_wall_inner, t_wall_inner + 200)
             t_lower = np.clip(t_lower, t_wall - 1, t_upper)
 
@@ -877,6 +881,7 @@ def solve_transient(
 
     vf = _compute_view_factors(width, depth, height, heater_y, heater_h, heater_w)
     f_rad_lower = vf["floor"] + vf["lower_walls"]
+    f_rad_upper = vf["ceiling"] + vf["upper_walls"]
     f_body = vf["body"]
 
     # Loyly parameters
@@ -1019,8 +1024,11 @@ def solve_transient(
 
         q_rad_to_walls = power_w * (1.0 - f_conv)
 
+        # Radiation to upper zone (fixed wall: direct to air; lumped: via wall model)
+        q_rad_to_upper = 0.0 if wall_cfg == "lumped" else q_rad_to_walls * f_rad_upper
+
         m_upper = rho_upper * v_upper
-        dt_upper = (q_plume_in - q_wall_upper + q_vent_upper) / (m_upper * cp_eff) if m_upper > 0.1 else 0.0
+        dt_upper = (q_plume_in - q_wall_upper + q_vent_upper + q_rad_to_upper) / (m_upper * cp_eff) if m_upper > 0.1 else 0.0
         t_upper += dt_step * dt_upper
 
         # Steam injection (loyly) — interval-integrated evaporation
@@ -1103,11 +1111,11 @@ def solve_transient(
 
         # Aufguss forced mixing
         if beta_aug > 0 and aufguss_start <= current_time <= aufguss_start + aufguss_duration:
-            q_mix = beta_aug * cp * (t_upper - t_lower)
+            q_mix = beta_aug * cp_eff * (t_upper - t_lower)
             if m_upper > 0.1:
-                t_upper -= dt_step * q_mix / (m_upper * cp)
+                t_upper -= dt_step * q_mix / (m_upper * cp_eff)
             if m_lower > 0.1:
-                t_lower += dt_step * q_mix / (m_lower * cp)
+                t_lower += dt_step * q_mix / (m_lower * cp_eff)
             t_upper = np.clip(t_upper, t_wall_inner, t_wall_inner + 200)
             t_lower = np.clip(t_lower, t_wall - 1, t_upper)
 

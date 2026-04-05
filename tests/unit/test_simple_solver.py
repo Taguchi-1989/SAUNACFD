@@ -430,13 +430,13 @@ class TestTransientSolver:
         (tmp_path / "dry").mkdir()
         (tmp_path / "wet").mkdir()
         dry_path = _write_case_yaml(tmp_path / "dry")
-        wet_path = _write_loyly_yaml(tmp_path / "wet", water_ml=1000)
+        wet_path = _write_loyly_yaml(tmp_path / "wet", water_ml=2000)
 
         # Get dry steady-state reference
         dry_steady = solve_two_zone(dry_path, max_iter=10000)
 
         # Run transient with loyly
-        wet_trans = solve_transient(wet_path, end_time=100.0, physical_dt=0.5, record_interval=1.0)
+        wet_trans = solve_transient(wet_path, end_time=150.0, physical_dt=0.5, record_interval=1.0)
 
         # The peak T_upper during transient should exceed the dry steady-state value
         peak_t_upper = float(wet_trans.t_upper_series.max())
