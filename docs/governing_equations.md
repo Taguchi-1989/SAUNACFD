@@ -23,11 +23,15 @@
 | 項目 | 正確版 (OpenFOAM) | 簡易版 (simple_solver.py) |
 |------|-------------------|--------------------------|
 | 次元 | 3D | 0D (2ゾーン集中定数) |
-| 方程式 | N-S + エネルギー + 乱流 | ゾーン質量保存 + エネルギー保存 + プルーム相関式 |
+| 方程式 | N-S + エネルギー + 乱流 + 蒸気輸送 | ゾーン質量/エネルギー保存 + プルーム + 壁面 + 湿度 |
+| 状態変数 | $\mathbf{U}, p, T, k, \omega, Y$ | $T_{\text{upper}}, T_{\text{lower}}, z_{\text{int}}, T_{\text{wall,inner}}, w$ |
 | 乱流モデル | SST k-omega | なし (プルーム相関式に内包) |
+| 壁面モデル | 壁面関数 + fixedValue | 集中定数 (lumped) または固定温度 |
+| 輻射モデル | なし (Phase 2 で fvDOM 導入予定) | View Factor (幾何近似) |
+| 湿度連成 | multiComponentMixture (H₂O) | 混合物性 ($c_{p,\text{mix}}, \lambda_{\text{mix}}, h_{\text{wall,eff}}$) |
 | 圧力-速度連成 | PIMPLE 法 (非定常) | なし (速度場を解かない) |
-| 時間積分 | backward (2次精度陰解法) | 前進 Euler (擬似時間進行) |
-| 用途 | 本計算・検証 | 可視化 UI・パラメータスタディ |
+| 時間積分 | backward (2次精度陰解法) | 定常: 擬似時間 / 過渡: 前進 Euler (実時間) |
+| 用途 | 本計算・検証 | 可視化 UI・パラメータスタディ・KPI 算出 |
 
 ---
 
@@ -224,16 +228,32 @@ $$
 **物理的意味:** プルームが上昇するにつれ周囲空気をエントレイン（巻き込み）し、
 質量流量は増加するが温度は低下する。これは MTT 理論の本質的な特徴。
 
-### 3.3 支配方程式
+### 3.3 支配方程式（現行実装）
 
-**状態変数:** $T_{\text{upper}}$ (上層温度), $T_{\text{lower}}$ (下層温度), $z_{\text{int}}$ (界面高さ)
+**状態変数:** $T_{\text{upper}}$, $T_{\text{lower}}$, $z_{\text{int}}$, $T_{\text{wall,inner}}$ (lumped壁面), $w$ (湿度比)
+
+#### 湿度連成物性
+
+全ての熱物性は湿度比 $w$ [kg vapor / kg dry air] に依存する:
+
+$$
+y_v = \frac{w}{1+w}, \quad
+c_{p,\text{mix}} = (1-y_v) c_{p,\text{air}} + y_v c_{p,\text{vapor}}, \quad
+\lambda_{\text{mix}} = (1-y_v) \lambda_{\text{air}} + y_v \lambda_{\text{vapor}}
+$$
+
+$$
+h_{\text{wall,eff}} = h_{\text{wall,base}} \left(\frac{c_{p,\text{mix}}}{c_{p,\text{air}}}\right)^{0.25} \left(\frac{\lambda_{\text{mix}}}{\lambda_{\text{air}}}\right)^{0.75}
+$$
+
+以下では $c_p = c_{p,\text{mix}}$, $h_{\text{wall}} = h_{\text{wall,eff}}$ と略記する。
 
 #### 上層エネルギー保存
 
 $$
 \rho_{\text{upper}} \, c_p \, V_{\text{upper}} \, \frac{dT_{\text{upper}}}{dt}
 = \underbrace{\dot{m}_p \, c_p \, (T_{\text{plume}} - T_{\text{upper}})}_{\text{プルームからの熱入力}}
-- \underbrace{h_{\text{wall}} \, A_{\text{wall,upper}} \, (T_{\text{upper}} - T_{\text{wall}})}_{\text{壁面熱損失}}
+- \underbrace{h_{\text{wall}} \, A_{\text{wall,upper}} \, (T_{\text{upper}} - T_{\text{wall,inner}})}_{\text{壁面への熱損失}}
 $$
 
 ここで:
@@ -241,46 +261,114 @@ $$
 - $V_{\text{upper}} = A_{\text{floor}} \times (H - z_{\text{int}})$: 上層体積 [m³]
 - $A_{\text{wall,upper}} = P \times (H - z_{\text{int}}) + A_{\text{floor}}$: 上層が接する壁面積 (側壁 + 天井) [m²]
 - $P = 2(W + D)$: 水平断面の周長 [m]
+- $T_{\text{wall,inner}}$: 壁面内面温度（lumped壁面モデルで計算。`model: fixed` の場合は $T_{\text{wall,outer}}$ 固定）
+
+**注:** ロウリュ（蒸気）は上層の湿度 $w$ を変化させるが、
+蒸発潜熱はヒーター石から奪われるため、上層空気に正味のエネルギー追加はない。
 
 #### 下層エネルギー保存
 
 $$
 \rho_{\text{lower}} \, c_p \, V_{\text{lower}} \, \frac{dT_{\text{lower}}}{dt}
-= \underbrace{Q_{\text{rad}} \times 0.3}_{\text{輻射受熱}}
+= \underbrace{Q_{\text{rad,lower}}}_{\text{輻射受熱}}
 + \underbrace{k_{\text{int}} \, A_{\text{floor}} \, \frac{T_{\text{upper}} - T_{\text{lower}}}{0.1 H}}_{\text{界面伝導}}
-- \underbrace{h_{\text{wall}} \, A_{\text{wall,lower}} \, (T_{\text{lower}} - T_{\text{wall}})}_{\text{壁面熱損失}}
+- \underbrace{h_{\text{wall}} \, A_{\text{wall,lower}} \, (T_{\text{lower}} - T_{\text{wall,inner}})}_{\text{壁面への熱損失}}
 $$
+
+**輻射経路（壁面モデルに依存）:**
+
+- **`model: lumped`（推奨）:** ヒーター輻射は全て壁面に吸収される。
+  壁面が温まり、壁面から空気への対流伝熱で間接的に加熱。
+  → $Q_{\text{rad,lower}} = 0$（壁面モデルが輻射を処理する）
+- **`model: fixed`:** 壁温固定のため壁面の蓄熱なし。
+  ヒーター輻射の一部が直接下層空気に入力される。
+  → $Q_{\text{rad,lower}} = Q_{\text{rad}} \times f_{\text{rad,lower}}$
 
 ここで:
 
 - $Q_{\text{rad}} = (1 - f_{\text{conv}}) \times Q_{\text{heater}}$: ヒーターからの輻射熱 [W]
+- $f_{\text{rad,lower}} = F_{\text{heater→floor}} + F_{\text{heater→lower walls}}$: 幾何学的 View Factor
 - $k_{\text{int}} = 0.5$ W/(m·K): 界面の実効熱伝導率
+
+#### 壁面集中定数モデル（`model: lumped`）
+
+壁面内面温度の時間発展:
+
+$$
+(\rho c_p)_w \, \delta_w \, A_{\text{wall,total}} \, \frac{dT_{\text{wall,inner}}}{dt}
+= \underbrace{Q_{\text{conv→wall}}}_{\text{空気→壁面}}
++ \underbrace{Q_{\text{rad}}}_{\text{ヒーター輻射全量}}
+- \underbrace{\frac{\lambda_w}{\delta_w} A_{\text{wall,total}} (T_{\text{wall,inner}} - T_{\text{wall,outer}})}_{\text{壁面→外部}}
+$$
+
+ここで:
+
+- $Q_{\text{conv→wall}} = h_{\text{wall}} A_{\text{wall,upper}} (T_{\text{upper}} - T_{\text{wall,inner}}) + h_{\text{wall}} A_{\text{wall,lower}} (T_{\text{lower}} - T_{\text{wall,inner}})$
+- $Q_{\text{rad}} = (1 - f_{\text{conv}}) Q_{\text{heater}}$: ヒーター輻射全量が壁面に吸収
+- $\delta_w = 0.015$ m, $\lambda_w = 0.12$ W/(m·K), $(\rho c_p)_w = 5 \times 10^5$ J/(m³·K)
 
 #### 界面質量保存
 
 $$
 A_{\text{floor}} \, \frac{dz_{\text{int}}}{dt}
-= -\frac{\dot{m}_p}{\rho_{\text{upper}}} + \dot{V}_{\text{return}}
+= -\frac{\dot{m}_p}{\rho_{\text{upper}}} + \dot{V}_{\text{return}} - \dot{V}_{\text{steam}}
 $$
 
 ここで:
 
 - $\dot{m}_p / \rho_{\text{upper}}$: プルームが上層に供給する体積流量（界面を押し下げる）
 - $\dot{V}_{\text{return}}$: 壁面沿い下降流による体積流量（界面を押し上げる）
+- $\dot{V}_{\text{steam}}$: 蒸気体積膨張（ロウリュ時のみ、過渡ソルバーで使用）
 
 $$
-\dot{V}_{\text{return}} = \frac{h_{\text{wall}} \, A_{\text{wall,upper}} \, (T_{\text{upper}} - T_{\text{wall}})}{\rho_{\text{upper}} \, c_p \, \max(T_{\text{upper}} - T_{\text{lower}}, \, 1)}
+\dot{V}_{\text{return}} = \frac{h_{\text{wall}} \, A_{\text{wall,upper}} \, (T_{\text{upper}} - T_{\text{wall,inner}})}{\rho_{\text{upper}} \, c_p \, \max(T_{\text{upper}} - T_{\text{lower}}, \, 1)}
 $$
 
-定常状態ではこの 2 つがバランスし、界面高さが安定する。
+定常状態ではこれらがバランスし、界面高さが安定する。
+
+#### アウフグース強制混合（`aufguss` 設定時のみ）
+
+定常ソルバーでは常時有効、過渡ソルバーでは指定時間窓で有効:
+
+$$
+\frac{dT_{\text{upper}}}{dt} \mathrel{-}= \frac{\beta_{\text{aug}} \, c_p \, (T_{\text{upper}} - T_{\text{lower}})}{m_{\text{upper}} \, c_p}
+$$
+
+$$
+\frac{dT_{\text{lower}}}{dt} \mathrel{+}= \frac{\beta_{\text{aug}} \, c_p \, (T_{\text{upper}} - T_{\text{lower}})}{m_{\text{lower}} \, c_p}
+$$
+
+$\beta_{\text{aug}}$ [kg/s] は OpenFOAM の事前計算から抽出する ROM パラメータ。
+
+#### 蒸気投入（ロウリュ）
+
+**定常ソルバー:** 全水量が蒸発した後の平衡状態を計算する。
+蒸発潜熱は石/ヒーター側から奪われるため、空気への正味エネルギー追加はない。
+湿度を一括設定: $w = m_{\text{water}} / m_{\text{upper}}$
+
+**過渡ソルバー:** Spalding 型の指数減衰蒸発モデルを区間積分で評価:
+
+$$
+\Delta m_{\text{steam}} = m_{\text{water}} \left( e^{-t_0/\tau} - e^{-t_1/\tau} \right)
+$$
+
+蒸発した蒸気は湿度 $w$ を増加させ、体積膨張 $\dot{V}_{\text{steam}}$ として界面を押し下げる。
 
 #### 密度の温度依存性
 
 $$
-\rho = \rho_0 \frac{T_{\text{wall}}}{T}
+\rho = \rho_0 \frac{T_{\text{wall,outer}}}{T}
 $$
 
 - $\rho_0 = 1.1$ kg/m³ (基準密度, ~300K)
+
+#### 収束判定（定常ソルバー）
+
+$$
+\max\left( \lvert \Delta T_{\text{upper}} \rvert, \; \lvert \Delta T_{\text{lower}} \rvert, \; 10 \lvert \Delta z_{\text{int}} \rvert, \; \lvert \Delta T_{\text{wall,inner}} \rvert \right) < 10^{-4}
+$$
+
+4つの状態変数すべてが収束するまで反復する（最低100反復）。
 
 ### 3.4 温度プロファイルの構築
 
@@ -488,9 +576,20 @@ PIMPLE (PISO + SIMPLE の融合) アルゴリズム。
 | パラメータ | 記号 | 値 | 根拠 |
 |-----------|------|-----|------|
 | 基準密度 | $\rho_0$ | 1.1 kg/m³ | ~300K での空気密度 |
-| 壁面熱伝達率 | $h_{\text{wall}}$ | 8.0 W/(m²·K) | 自然対流の標準値 |
+| 壁面熱伝達率（基準） | $h_{\text{wall,base}}$ | 8.0 W/(m²·K) | 自然対流の標準値（湿度で補正） |
 | 対流熱割合 | $f_{\text{conv}}$ | 0.7 | ヒーター出力の70%が対流 |
 | 界面伝導率 | $k_{\text{int}}$ | 0.5 W/(m·K) | 界面を介した弱い伝導 |
+| 水蒸気比熱 | $c_{p,\text{vapor}}$ | 1860 J/(kg·K) | NIST (373K) |
+| 水蒸気熱伝導率 | $\lambda_{\text{vapor}}$ | 0.025 W/(m·K) | Incropera (373K) |
+| 蒸発潜熱 | $L_v$ | $2.26 \times 10^6$ J/kg | 100°C |
+
+### 壁面モデルパラメータ（`model: lumped` 使用時）
+
+| パラメータ | 記号 | 値 | 根拠 |
+| --------- | ---- | --- | ---- |
+| 木材パネル厚さ | $\delta_w$ | 0.015 m | サウナ内装板の標準厚 |
+| 木材熱伝導率 | $\lambda_w$ | 0.12 W/(m·K) | 針葉樹（杉/ヒノキ） |
+| 木材体積熱容量 | $(\rho c_p)_w$ | $5 \times 10^5$ J/(m³·K) | $\rho \approx 450$ kg/m³, $c_p \approx 1100$ J/(kg·K) |
 
 ---
 
