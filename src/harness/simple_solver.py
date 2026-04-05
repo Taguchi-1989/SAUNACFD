@@ -421,16 +421,17 @@ def _q_rad_body(
     Returns:
         Radiative heat flux on the body [W/m2].
     """
-    SIGMA = 5.67e-8       # Stefan-Boltzmann constant [W/(m2*K4)]
-    EPSILON_BODY = 0.97   # human skin emissivity
+    SIGMA = 5.67e-8        # Stefan-Boltzmann constant [W/(m2*K4)]
+    EPSILON_HEATER = 0.90  # heater surface emissivity (stone/metal)
+    EPSILON_BODY = 0.97    # human skin emissivity
     T_SKIN_K = 36.0 + 273.15
 
     a_heater = max(heater_w * heater_h, 0.01)
     q_rad_total = power_w * (1.0 - f_conv)  # total radiant output [W]
     q_heater_surface = q_rad_total / a_heater  # [W/m2]
 
-    # Estimate heater surface temperature from radiant flux
-    t_heater_k = (q_heater_surface / (EPSILON_BODY * SIGMA) + t_wall_inner_k**4) ** 0.25
+    # Estimate heater surface temperature from heater's own emissivity
+    t_heater_k = (q_heater_surface / (EPSILON_HEATER * SIGMA) + t_wall_inner_k**4) ** 0.25
 
     # Net radiative heat flux intercepted by the body
     return float(
@@ -605,7 +606,7 @@ def solve_two_zone(
         aufguss_duration = 0.0
 
     # Heater characteristic diameter for virtual origin correction
-    heater_width = heater.get("width", 0.6)
+
 
     # Ventilation parameters
     vent_cfg = data.get("ventilation")
@@ -674,7 +675,7 @@ def solve_two_zone(
         # Plume at interface height
         z_plume = max(0.01, z_int - heater_center_y)
         m_plume, t_plume = _plume_entrainment(
-            q_conv, z_plume, t_lower, heater_diameter=heater_width,
+            q_conv, z_plume, t_lower, heater_diameter=heater_w,
         )
 
         # --- Humidity-dependent properties ---
@@ -909,7 +910,7 @@ def solve_transient(
         aufguss_duration = 0.0
 
     # Heater characteristic diameter for virtual origin correction
-    heater_width = heater.get("width", 0.6)
+
 
     # Ventilation parameters
     vent_cfg = data.get("ventilation")
@@ -999,7 +1000,7 @@ def solve_transient(
         # Plume at interface height
         z_plume = max(0.01, z_int - heater_center_y)
         m_plume, t_plume = _plume_entrainment(
-            q_conv, z_plume, t_lower, heater_diameter=heater_width,
+            q_conv, z_plume, t_lower, heater_diameter=heater_w,
         )
 
         # Humidity-dependent properties

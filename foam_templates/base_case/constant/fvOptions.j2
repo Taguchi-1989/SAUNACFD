@@ -50,8 +50,9 @@ buoyancyProduction
                 -(mut / (rho * Prt)) * (g & fvc::grad(rho))
             );
 
-            // Add as implicit source for numerical stability
-            eqn += fvm::Su
+            // SuSp: positive Gb (unstable/production) treated explicitly,
+            // negative Gb (stable/destruction) treated implicitly on diagonal
+            eqn += fvm::SuSp
             (
                 Gb / (k + dimensionedScalar("kSmall", k.dimensions(), 1e-15)),
                 k
