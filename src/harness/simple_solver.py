@@ -102,8 +102,10 @@ def _compute_view_factors(
     f_floor_raw = np.arctan(char_len / dist_floor) / np.pi
     f_ceiling_raw = np.arctan(char_len / dist_ceil) / np.pi
 
-    # Opposite wall fraction (across the room width)
-    f_opposite = np.arctan(heater_h / max(room_w, 0.01)) / np.pi
+    # Opposite wall fraction — wider heater subtends larger solid angle
+    # Use heater frontal area (h * w) vs room cross-section (h * room_w)
+    heater_aspect = heater_w / max(room_d, 0.01)  # fraction of wall width covered
+    f_opposite = np.arctan(heater_h / max(room_w, 0.01)) / np.pi * min(heater_aspect + 0.5, 1.0)
 
     # Remaining goes to side walls, split by position relative to heater
     f_sum = f_floor_raw + f_ceiling_raw + f_opposite
@@ -342,7 +344,9 @@ def _ventilation_flow(
     if delta_p < 0:
         m_dot = -m_dot
 
-    return m_dot
+    # Sauna is always hotter than ambient — clamp to non-negative.
+    # Reverse flow (cold outdoor air sinking through exhaust) is not modeled.
+    return max(m_dot, 0.0)
 
 
 def _humid_air_properties(
@@ -714,17 +718,16 @@ def solve_two_zone(
 
         # Steam (löyly) — steady-state treatment
         # Latent heat is drawn FROM the heater/stones, not created.
-        # The evaporation reduces the effective convective power.
-        # Humidity is set from total water mass (final equilibrium state).
+        # Humidity is recomputed each iteration using current m_upper,
+        # so it reflects the pseudo-steady state after the event, not
+        # the initial (potentially thin) upper layer mass.
         if water_kg > 0:
+            # Recompute humidity ratio with current upper layer mass
+            humidity_ratio = water_kg / max(m_upper, 0.1)
             if not steam_applied:
-                humidity_ratio = water_kg / max(m_upper, 0.1)
                 total_steam = water_kg
                 peak_steam_rate = water_kg / tau_evap
                 steam_applied = True
-                # Note: no t_upper boost — latent heat comes from stones,
-                # not created from nothing. The steam adds humidity (which
-                # affects h_wall, cp) but does not add net energy to the air.
             v_steam = 0.0
             m_dot_steam = 0.0
             # Ventilation humidity dilution (exhaust removes humid air, supply brings dry)
@@ -1179,21 +1182,35 @@ def solve_transient(
     perceived_upper_arr = perceived_upper_arr[:record_idx]
 
     total_steam = min(total_steam, water_kg) if water_kg > 0 else 0.0
-    # Report beta_aug if aufguss was configured (regardless of current time)
     beta_aug_applied = beta_aug if beta_aug > 0 else 0.0
+
+    # Use time-averaged values from the last 25% of the simulation for summary,
+    # rather than instantaneous final values which can be noisy.
+    n_avg = max(1, record_idx // 4)
+    t_upper_avg = float(t_upper_arr[-n_avg:].mean()) if record_idx > 0 else t_upper
+    t_lower_avg = float(t_lower_arr[-n_avg:].mean()) if record_idx > 0 else t_lower
+    z_int_avg = float(z_int_arr[-n_avg:].mean()) if record_idx > 0 else z_int
+
+    # Convergence: check if T_upper stabilised in the averaging window
+    if record_idx > 1:
+        t_upper_std = float(t_upper_arr[-n_avg:].std())
+        converged = t_upper_std < 0.5  # < 0.5 K standard deviation
+    else:
+        converged = False
+
     steady = _make_simple_result(
         data=data,
         n_profile=n_profile,
         height=height,
         heater_y=heater_y,
         heater_h=heater_h,
-        z_int=z_int,
-        t_upper=t_upper,
-        t_lower=t_lower,
+        z_int=z_int_avg,
+        t_upper=t_upper_avg,
+        t_lower=t_lower_avg,
         t_plume=t_plume,
         m_plume=m_plume,
         iterations=int(np.ceil(end_time / physical_dt)) if physical_dt > 0 else 0,
-        converged=abs(t_upper_arr[-1] - t_upper_arr[-2]) < 1e-3 if len(t_upper_arr) > 1 else False,
+        converged=converged,
         residual_history=[],
         peak_steam_rate=peak_steam_rate,
         total_steam=total_steam,
