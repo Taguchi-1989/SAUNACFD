@@ -935,8 +935,13 @@ PoC フェーズに適している。
 
 $
 \Delta p = \rho_{\text{amb}} \, g \, (z_{\text{exhaust}} - z_{\text{supply}}) \,
-\frac{\bar{T}_{\text{col}} - T_{\text{ambient}}}{T_{\text{ambient}}}
+\frac{\bar{T}_{\text{col}} - T_{\text{ambient}}}{\bar{T}_{\text{col}}}
 $
+
+\textbf{注:} 分母は $\bar{T}_{\text{col}}$（室内カラム平均温度）である。
+理想気体の密度差 $\rho_{\text{amb}} - \bar{\rho}_{\text{col}} = \rho_{\text{amb}}(1 - T_{\text{amb}}/\bar{T}_{\text{col}})$
+から導出される。分母を $T_{\text{amb}}$ とすると、サウナのように内外温度差が大きい場合に
+駆動圧力が過大評価され、不自然に強力な換気が発生する。
 
 ここで $\bar{T}_{\text{col}}$ は給排気口間の高さ加重平均温度:
 
@@ -957,14 +962,15 @@ $f_{\text{upper}} = 1 - f_{\text{lower}}$
 有効開口面積を用いた質量流量:
 
 $
-\dot{m}_{\text{vent}} = C_d A_{\text{eff}} \sqrt{2 \rho_{\text{supply}} |\Delta p|}
+\dot{m}_{\text{vent}} = \text{sgn}(\Delta p) \; C_d A_{\text{eff}} \sqrt{2 \rho_{\text{upwind}} |\Delta p|}
 $
 
 ここで:
 
 \begin{itemize} \item $C_d A_{\text{eff}} = \min(C_{d,s} A_s, \, C_{d,e} A_e)$: 有効開口面積（流量は狭い方で制限） \end{itemize}
-\begin{itemize} \item $\rho_{\text{supply}}$: 給気口位置の空気密度 [kg/m³] \end{itemize}
-\begin{itemize} \item $\dot{m}_{\text{vent}}$: 正（流入）が通常だが、ロウリュ蒸気膨張時の室内圧上昇で負（逆流＝排出）も許容 \end{itemize}
+\begin{itemize} \item $\rho_{\text{upwind}}$: 風上密度。流入時（$\Delta p > 0$）は $\rho_{\text{amb}}$（外気密度）、
+  逆流時（$\Delta p < 0$）は $\rho_{\text{supply}}$（給気口位置の室内密度）を使用 \end{itemize}
+\begin{itemize} \item 正（流入）が通常だが、ロウリュ蒸気膨張時の室内圧上昇で負（逆流＝排出）も許容 \end{itemize}
 
 \subsubsection{10.4 エネルギー保存への寄与}
 

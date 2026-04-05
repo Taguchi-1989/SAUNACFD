@@ -317,28 +317,31 @@ def _ventilation_flow(
     rho_ambient = rho_0 * 300.0 / max(t_ambient, 250.0)
 
     # Stack effect pressure difference (height-weighted average temperature)
+    # dp = rho_amb * g * dz * (T_col - T_amb) / T_col
+    # Denominator is T_col (not T_amb) from ideal gas: drho = rho_amb*(1 - T_amb/T_col)
     dz_total = z_exhaust - z_supply
     dz_lower_frac = max(0.0, min(z_int, z_exhaust) - z_supply) / dz_total if dz_total > 0 else 0.5
     dz_upper_frac = 1.0 - dz_lower_frac
     t_avg_col = dz_lower_frac * t_at_supply + dz_upper_frac * t_at_exhaust
-    delta_p = rho_ambient * g * dz_total * (t_avg_col - t_ambient) / max(t_ambient, 250.0)
+    delta_p = rho_ambient * g * dz_total * (t_avg_col - t_ambient) / max(t_avg_col, 250.0)
 
     # Effective orifice area (balanced flow: limited by smaller vent)
     a_eff = min(cd_supply * a_supply, cd_exhaust * a_exhaust)
 
-    # Density at supply vent for mass flow calculation
+    # Upwind density: use the density of the fluid flowing INTO the orifice
+    # Inflow (delta_p > 0): ambient air enters → use rho_ambient
+    # Outflow (delta_p < 0): indoor air exits → use rho at supply vent
     rho_at_supply = rho_0 * 300.0 / max(t_at_supply, 250.0)
+    rho_upwind = rho_ambient if delta_p > 0 else rho_at_supply
 
-    # Orifice mass flow
+    # Orifice mass flow: sgn(dp) * Cd * A * sqrt(2 * rho_upwind * |dp|)
     if abs(delta_p) < 1e-6:
         return 0.0
 
-    m_dot = a_eff * math.sqrt(2.0 * rho_at_supply * abs(delta_p))
+    m_dot = a_eff * math.sqrt(2.0 * rho_upwind * abs(delta_p))
     if delta_p < 0:
         m_dot = -m_dot
 
-    # Allow negative (outflow through supply) during transient pressure events
-    # e.g., löyly steam expansion can momentarily reverse supply flow
     return m_dot
 
 
