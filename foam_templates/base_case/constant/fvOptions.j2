@@ -47,19 +47,22 @@ buoyancyProduction
             const dimensionedVector g("g", dimAcceleration, vector(0, -9.81, 0));
             const scalar Prt = 0.85;
 
+            // Guard against zero density at startup
+            volScalarField rhoSafe
+            (
+                "rhoSafe",
+                max(rho, dimensionedScalar("rhoMin", rho.dimensions(), 0.5))
+            );
+
             volScalarField Gb
             (
                 "Gb",
-                -(mut / (rho * Prt)) * (g & fvc::grad(rho))
+                -(mut / (rhoSafe * Prt)) * (g & fvc::grad(rho))
             );
 
-            // SuSp: positive Gb (unstable/production) treated explicitly,
-            // negative Gb (stable/destruction) treated implicitly on diagonal
-            eqn += fvm::SuSp
-            (
-                Gb / (k + dimensionedScalar("kSmall", k.dimensions(), 1e-15)),
-                k
-            );
+            // Explicit source: add Gb directly to k equation RHS.
+            // Simpler and avoids division by k (which can be zero at startup).
+            eqn += Gb;
         #};
 
         codeConstrain
