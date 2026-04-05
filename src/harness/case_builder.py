@@ -340,6 +340,120 @@ def render_templates(
             shutil.copy2(template_path, out_path)
 
 
+def _generate_initial_fields(
+    case_yaml: Path, output_dir: Path, geometry: dict, mesh: dict,
+    boundary_conditions: dict,
+) -> None:
+    """Run simple solver and write nonuniform T/p_rgh initial fields.
+
+    Uses the 2-zone plume model steady solution as initial condition
+    for OpenFOAM, drastically reducing convergence time.
+    """
+    import numpy as np
+
+    from harness.simple_solver import solve_two_zone
+
+    try:
+        result = solve_two_zone(case_yaml, max_iter=10000)
+    except Exception:
+        return  # If simple solver fails, keep uniform fields
+
+    if not result.converged:
+        # Still use the result — it's a better guess than uniform 20°C
+        pass
+
+    dims = geometry["dimensions"]
+    room_h = dims["y"]
+
+    # Get mesh y-structure from blockMeshDict context
+    heater = boundary_conditions.get("heater", {})
+    h_width = heater.get("width", 0.5)
+    h_height = heater.get("height", 0.5)
+    h_pos = heater.get("position", {})
+    y0 = h_pos.get("y", 0.0)
+    y1 = y0 + h_height
+    z_center = h_pos.get("z", dims["z"] / 2)
+    z0 = z_center - h_width / 2
+    z1 = z0 + h_width
+
+    y_points = _unique_points([0.0, y0, y1, dims["y"]])
+    z_points = _unique_points([0.0, z0, z1, dims["z"]])
+
+    density = _MESH_DENSITY.get(geometry.get("mesh_level", "M0"), 8)
+    nx = max(1, round(dims["x"] * density))
+    ny = max(1, round(dims["y"] * density))
+    nz = max(1, round(dims["z"] * density))
+
+    y_cells = _allocate_segment_cells(y_points, ny)
+    z_cells = _allocate_segment_cells(z_points, nz)
+
+    # Build cell centre y-coordinates for each block (ordered as blockMesh emits them)
+    cell_y_list: list[float] = []
+    for yi in range(len(y_points) - 1):
+        for zi in range(len(z_points) - 1):
+            n_y = y_cells[yi]
+            n_z = z_cells[zi]
+            y_lo, y_hi = y_points[yi], y_points[yi + 1]
+            for j in range(n_y):
+                y_c = y_lo + (j + 0.5) * (y_hi - y_lo) / n_y
+                for _ in range(nx * n_z):
+                    cell_y_list.append(y_c)
+
+    cell_y = np.array(cell_y_list)
+    n_cells = len(cell_y)
+
+    # Map simple solver profile to each cell
+    t_upper = result.upper_layer_temp
+    t_lower = result.lower_layer_temp
+    z_int = result.interface_height
+    delta = 0.15 * room_h  # transition layer thickness
+
+    # Sigmoid interpolation (same as simple_solver._build_profile_and_probes)
+    T_field = t_lower + (t_upper - t_lower) / (
+        1.0 + np.exp(-3.0 * (cell_y - z_int) / (delta / 2.0))
+    )
+
+    # Corresponding p_rgh: hydrostatic adjustment
+    # p_rgh = p - rho * g * (y - hRef), with hRef=0
+    # rho = rho_0 * T_ref / T, rho_0=1.1, T_ref=300K (approximate)
+    R_air = 8314.0 / 28.96  # J/(kg·K)
+    p_atm = 101325.0
+    rho_field = p_atm / (R_air * T_field)
+    g_mag = 9.81
+    p_rgh_field = p_atm - rho_field * g_mag * cell_y
+
+    # Write T file with nonuniform internalField
+    t_file = output_dir / "0" / "T"
+    t_text = t_file.read_text(encoding="utf-8")
+    # Replace "internalField   uniform XXX;" with nonuniform list
+    t_values = "\n".join(f"{v:.6f}" for v in T_field)
+    t_text = t_text.replace(
+        f"internalField   uniform {result.lower_layer_temp};",  # might not match
+        f"internalField   nonuniform List<scalar>\n{n_cells}\n(\n{t_values}\n)\n;",
+    )
+    # More robust: replace any "internalField   uniform ...;"
+    import re
+    t_text = re.sub(
+        r'internalField\s+uniform\s+[\d.]+\s*;',
+        f'internalField   nonuniform List<scalar>\n{n_cells}\n(\n{t_values}\n)\n;',
+        t_text,
+        count=1,
+    )
+    t_file.write_text(t_text, encoding="utf-8")
+
+    # Write p_rgh with nonuniform internalField
+    prgh_file = output_dir / "0" / "p_rgh"
+    prgh_text = prgh_file.read_text(encoding="utf-8")
+    prgh_values = "\n".join(f"{v:.6f}" for v in p_rgh_field)
+    prgh_text = re.sub(
+        r'internalField\s+uniform\s+[\d.]+\s*;',
+        f'internalField   nonuniform List<scalar>\n{n_cells}\n(\n{prgh_values}\n)\n;',
+        prgh_text,
+        count=1,
+    )
+    prgh_file.write_text(prgh_text, encoding="utf-8")
+
+
 def build_case(case_yaml: Path, output_dir: Path | None = None) -> Path:
     """Build an OpenFOAM case directory from a YAML definition.
 
@@ -443,4 +557,10 @@ def build_case(case_yaml: Path, output_dir: Path | None = None) -> Path:
         skip.append("0/IDefault.j2")
 
     render_templates(_TEMPLATE_DIR, output_dir, context, skip_templates=skip)
+
+    # Initialize T and p_rgh from simple solver steady solution
+    _generate_initial_fields(
+        case_yaml, output_dir, data["geometry"], mesh, data["boundary_conditions"],
+    )
+
     return output_dir
