@@ -260,12 +260,20 @@ def compute_heater_params(boundary_conditions: dict, geometry: dict) -> dict:
     walls = boundary_conditions.get("walls", {})
     t_walls = walls.get("temperature", 293.15)
 
+    # Heater surface temperature: typical sauna stove surface 200-400°C
+    # Use power-based estimate capped to realistic range
+    # T_heater = T_wall + Q/(h_total * A), h_total ≈ 200 W/(m²K) (high rad+conv)
+    h_eff_heater = 200.0
+    t_heater_raw = t_walls + heat_flux / h_eff_heater
+    t_heater = min(t_heater_raw, t_walls + 300)  # cap at wall+300K (~600K max)
+
     return {
         "heat_flux": round(heat_flux, 2),
         "heater_width": width,
         "heater_height": height,
         "T_walls": t_walls,
         "T_initial": t_walls,
+        "T_heater": round(t_heater, 2),
     }
 
 

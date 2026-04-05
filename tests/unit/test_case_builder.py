@@ -103,10 +103,10 @@ class TestBuildCase:
         control = (out / "system" / "controlDict").read_text(encoding="utf-8")
         assert "buoyantPimpleFoam" in control
 
-        # Check T file has heat flux
+        # Check T file has heater wall with fixedValue temperature
         t_file = (out / "0" / "T").read_text(encoding="utf-8")
-        assert "externalWallHeatFluxTemperature" in t_file
-        assert "60000.0" in t_file  # 18000/(0.6*0.5)
+        assert "heater_wall" in t_file
+        assert "fixedValue" in t_file
         assert "heater_wall_surround" in t_file
 
     def test_probes_in_controldict(self, sample_case_path: Path, tmp_path: Path) -> None:
