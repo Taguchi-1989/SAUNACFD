@@ -9,12 +9,17 @@ FoamFile
 {% if buoyancy_production | default(true) %}
 buoyancyProduction
 {
-    type            scalarCodedSource;
+    type            coded;
     name            buoyancyProductionK;
     active          true;
     selectionMode   all;
 
-    scalarCodedSourceCoeffs
+    codeOptions
+    #{
+        fields  (k);
+    #};
+
+    buoyancyProductionKCoeffs
     {
         selectionMode   all;
         fields          (k);
@@ -41,10 +46,8 @@ buoyancyProduction
                 mesh_.lookupObject<volScalarField>("rho");
             const volScalarField& mut =
                 mesh_.lookupObject<volScalarField>("mut");
-            const volScalarField& k =
-                mesh_.lookupObject<volScalarField>("k");
-
-            const dimensionedVector g("g", dimAcceleration, vector(0, -9.81, 0));
+            const uniformDimensionedVectorField& g =
+                mesh_.lookupObject<uniformDimensionedVectorField>("g");
             const scalar Prt = 0.85;
 
             // Guard against zero density at startup
