@@ -8,20 +8,20 @@ FoamFile
 
 dimensions      [0 2 -2 0 0 0 0];
 
-internalField   uniform 0.1;
+internalField   uniform 1.0;
 
 boundaryField
 {
     "(floor|ceiling|heater_wall|heater_wall_surround|opposite_wall|front|back)"
     {
         type            kqRWallFunction;
-        value           uniform 0.1;
+        value           uniform 1.0;
     }
 {% if ventilation | default(false) %}
     supply_vent
     {
         type            fixedValue;
-        value           uniform 0.1;
+        value           uniform 1.0;
     }
     exhaust_vent
     {
