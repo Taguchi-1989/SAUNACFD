@@ -534,10 +534,17 @@ def build_case(case_yaml: Path, output_dir: Path | None = None) -> Path:
     except Exception:
         pass
 
+    # Wall heat transfer: lambda_w / delta_w gives effective U-value to outside
+    walls = data["boundary_conditions"].get("walls", {})
+    wall_thickness = walls.get("thickness", 0.08)
+    wall_conductivity = walls.get("conductivity", 0.12)
+    wall_htc = wall_conductivity / max(wall_thickness, 0.01)  # W/(m²K)
+
     context = {
         **mesh,
         **heater,
         "T_wall_inner": t_wall_inner,
+        "wall_htc": round(wall_htc, 4),
         "solver_name": solver_name,
         "end_time": end_time,
         "write_interval": write_interval,
