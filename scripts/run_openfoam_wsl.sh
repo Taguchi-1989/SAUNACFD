@@ -12,6 +12,18 @@ echo "=== Copying case to Linux filesystem ==="
 rm -rf "$CASE"
 cp -r "$SRC" "$CASE"
 
+# Disable G_b for now — codedSource API investigation needed separately
+cat > "$CASE/constant/fvOptions" << 'ENDOPTIONS'
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      fvOptions;
+}
+// G_b disabled — codedSource API needs investigation
+ENDOPTIONS
+
 cd "$CASE"
 
 echo ""
@@ -19,11 +31,7 @@ echo "=== blockMesh ==="
 blockMesh 2>&1 | tail -5
 
 echo ""
-echo "=== checkMesh ==="
-checkMesh 2>&1 | grep -E "OK|Mesh" | tail -3
-
-echo ""
-echo "=== Configure: 600s run (P0 validation) ==="
+echo "=== Configure: 600s run ==="
 foamDictionary system/controlDict -entry endTime -set 600
 foamDictionary system/controlDict -entry writeInterval -set 100
 foamDictionary system/controlDict -entry deltaT -set 0.0001
@@ -32,15 +40,13 @@ foamDictionary system/controlDict -entry maxDeltaT -set 0.5
 echo "deltaT=0.0001, maxCo=0.3, endTime=600, nOuterCorrectors=4"
 
 echo ""
-echo "=== buoyantPimpleFoam (600s with G_b enabled) ==="
+echo "=== buoyantPimpleFoam (600s, externalWallHeatFlux, nOuterCorr=4) ==="
 buoyantPimpleFoam 2>&1 | tail -60
 
 echo ""
 echo "=== Copying results back ==="
 cp -r "$CASE"/[0-9]* "$SRC/" 2>/dev/null || true
 cp -r "$CASE/postProcessing" "$SRC/" 2>/dev/null || true
-# Copy compiled dynamicCode so G_b doesn't need recompile next time
-cp -r "$CASE/dynamicCode" "$SRC/" 2>/dev/null || true
 
 echo ""
 echo "=== Done ==="
