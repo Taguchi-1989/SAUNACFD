@@ -59,7 +59,20 @@
 | 蒸発潜熱 | $L_v$ | 2.26×10⁶ | J/kg | CRC Handbook | 熱力学 | 100°C における水の蒸発潜熱 |
 | ヒーター容量目安 | — | ~1 | kW/m³ | Harvia サウナカリキュレーター | 設備工学 | 業界標準 (Harvia, HELO, HUUM)。3.0×2.5×2.5m で 18kW |
 
-### 1.4 状態方程式
+### 1.4 体感温度・輻射・換気モデルパラメータ
+
+| 定数 | 記号 | 値 | 単位 | 出典 | 分野 | 根拠 |
+|------|------|-----|------|------|------|------|
+| 平均皮膚温度 | $T_{\text{skin}}$ | 36.0 | °C | ISO 7933 (予測熱ひずみ) | 生理学 | 温熱環境下の平均皮膚表面温度。個人差あり（34-37°C） |
+| 皮膚濡れ率 | $w_{\text{skin}}$ | 0.4 | — | Gagge et al. (1971) | 温熱生理学 | 発汗による皮膚表面の湿潤度。0=完全乾燥、1=完全湿潤。サウナでは0.3-0.6程度 |
+| 最大蒸発冷却 | $Q_{\text{evap,max}}$ | 400 | W/m² | Kerslake (1972), "The Stress of Hot Environments" | 温熱生理学 | 生理的限界。汗腺の最大発汗能力と皮膚面積から |
+| Lewis 係数 | — | 16.5 | W/(m²·kPa) per h | Lewis (1922) の関係 | 伝熱工学 | 空気-水系の Lewis 数 ≈ 1 から $h_e \approx 16.5 h_c$ |
+| ヒーター射出率 | $\varepsilon_{\text{heater}}$ | 0.90 | — | 石/金属表面の文献値 | 輻射伝熱 | サウナストーンの表面放射率。粗面石は0.85-0.95 |
+| 人体射出率 | $\varepsilon_{\text{body}}$ | 0.97 | — | Hardy & Muschenheim (1934) | 生物物理学 | 人体皮膚の遠赤外域放射率。ほぼ黒体 |
+| Stefan-Boltzmann定数 | $\sigma$ | 5.67×10⁻⁸ | W/(m²·K⁴) | CODATA 2018 | 物理学 | 黒体輻射の基本定数 |
+| オリフィス流量係数 | $C_d$ | 0.6 | — | Idelchik, "Handbook of Hydraulic Resistance" | 流体力学 | 鋭縁オリフィスの標準値。丸孔で0.6-0.65 |
+
+### 1.5 状態方程式
 
 **理論根拠: 理想気体の状態方程式**
 
@@ -247,6 +260,87 @@ $$
   有限の遷移層厚さ $\delta = 0.15H$ で生じることを表現。
   係数 "3" はシグモイドの傾き制御パラメータ（$\pm\delta/2$ の範囲で 5%~95% の遷移）
 
+### 2.5 体感温度モデル（皮膚熱収支）
+
+Steadman (1979) の heat index はサウナ温度域 (>80°C) で破綻するため、
+皮膚表面の熱収支に基づく等価温度モデルに置き換えた。
+
+**皮膚表面の熱収支:**
+
+$$
+q_{\text{total}} = \underbrace{h_c (T_{\text{air}} - T_{\text{skin}})}_{\text{対流}}
++ \underbrace{q_{\text{rad,body}}}_{\text{直達輻射}}
++ \underbrace{q_{\text{evap}}}_{\text{蒸発/結露}}
+$$
+
+**蒸発・結露項 (Lewis 関係):**
+
+$$
+q_{\text{evap}} = \begin{cases}
+16.5 \, h_c \, (p_v - p_{\text{sat,skin}}) & \text{if } p_v > p_{\text{sat,skin}} \text{ (結露→加熱)} \\
+-\min\left(w_{\text{skin}} \cdot 16.5 \, h_c \, (p_{\text{sat,skin}} - p_v), \; Q_{\text{evap,max}}\right) & \text{(蒸発→冷却)}
+\end{cases}
+$$
+
+- $p_v = RH \cdot p_{\text{sat}}(T_{\text{air}})$: 空気中の水蒸気分圧 [kPa]
+- $p_{\text{sat,skin}} = p_{\text{sat}}(T_{\text{skin}})$: 皮膚温度での飽和蒸気圧 [kPa]
+- $p_{\text{sat}}$ は Magnus 式: $p = 0.61078 \exp(17.27 T / (T + 237.3))$ [kPa]
+
+**等価温度:**
+
+$$
+T_{\text{perceived}} = T_{\text{skin}} + \frac{q_{\text{total}}}{h_{\text{ref}}}
+$$
+
+$h_{\text{ref}} = 10$ W/(m²·K) は正規化用の基準伝熱係数。
+
+- **出典:** ISO 7933 (2004) "Ergonomics of the thermal environment" の皮膚熱収支モデルを簡略化
+- **分野:** 温熱生理学・人間工学
+- **Steadman からの改善点:** 結露加熱を明示的にモデル化（サウナ蒸気による皮膚結露で体感温度が急上昇する現象を表現可能）
+
+### 2.6 ヒーターから人体への直達輻射
+
+**Stefan-Boltzmann の法則:**
+
+$$
+q_{\text{rad,body}} = \varepsilon_{\text{body}} \, \sigma \, F_{\text{heater→body}} \, (T_{\text{heater}}^4 - T_{\text{skin}}^4)
+$$
+
+ヒーター表面温度は放射出力から逆算:
+
+$$
+T_{\text{heater}} = \left(\frac{Q_{\text{rad}} / A_{\text{heater}}}{\varepsilon_{\text{heater}} \, \sigma} + T_{\text{wall,inner}}^4 \right)^{1/4}
+$$
+
+- **出典:** Siegel & Howell, "Thermal Radiation Heat Transfer", 5th ed.
+- **分野:** 輻射伝熱
+- **本計算での意義:** ヒーターから人体への直達輻射は、壁面経由の間接輻射とは独立に体感温度に寄与する。これは「同じ気温でもヒーターの近くは熱い」という実体験と一致
+
+### 2.7 換気モデル（スタック効果）
+
+密閉仮定を撤廃し、サウナ室の給排気口を通じた自然換気をモデル化。
+
+**スタック効果による圧力差:**
+
+$$
+\Delta p = \rho_{\text{amb}} \, g \, (z_{\text{exhaust}} - z_{\text{supply}}) \, \frac{T_{\text{col}} - T_{\text{amb}}}{T_{\text{col}}}
+$$
+
+ここで $T_{\text{col}}$ は給排気口間の空気柱の加重平均温度。
+
+**オリフィス流量:**
+
+$$
+\dot{m}_{\text{vent}} = C_d \, A_{\text{eff}} \, \sqrt{2 \rho \lvert \Delta p \rvert} \cdot \text{sign}(\Delta p)
+$$
+
+- $A_{\text{eff}} = \min(C_d A_{\text{supply}}, C_d A_{\text{exhaust}})$: 流量制限側の実効面積
+- $\rho$: 上流側の密度（流入時は外気、流出時は室内空気）
+
+- **出典:** ASHRAE Handbook — Fundamentals (2017), Ch.16 "Ventilation and Infiltration"
+- **分野:** 建築環境工学
+- **サウナへの適用:** フィンランドサウナは床近くの吸気口と天井近くの排気口を持つ設計が標準。ロウリュ時の体積膨張は主にこの排気口から放出される
+
 ---
 
 ## 3. 簡易版 (2-Zone) の方程式導出
@@ -284,31 +378,71 @@ $$
 
 $$
 \rho_{\text{lower}} c_p V_{\text{lower}} \frac{dT_{\text{lower}}}{dt}
-= \underbrace{Q_{\text{rad}} \times 0.3}_{\text{輻射受熱}}
+= \underbrace{Q_{\text{rad,lower}}}_{\text{輻射受熱}}
 + \underbrace{k_{\text{int}} A_{\text{floor}} \frac{T_{\text{upper}} - T_{\text{lower}}}{0.1H}}_{\text{界面伝導}}
-- \underbrace{h_{\text{wall}} A_{\text{wall,lower}} (T_{\text{lower}} - T_{\text{wall}})}_{\text{壁面損失}}
+- \underbrace{h_{\text{wall,eff}} A_{\text{wall,lower}} (T_{\text{lower}} - T_{\text{wall,inner}})}_{\text{壁面損失}}
 $$
+
+**輻射経路の設計（壁面モデル依存）:**
+
+- **`model: lumped`（推奨）:** ヒーター輻射は壁面集中定数モデルに全量吸収。
+  壁面が温まり、対流で空気へ返す。→ $Q_{\text{rad,lower}} = 0$（二重計上を防止）
+- **`model: fixed`:** 壁面蓄熱なし。ヒーター輻射の一部が直接下層空気へ。
+  → $Q_{\text{rad,lower}} = Q_{\text{rad}} \times f_{\text{rad,lower}}$
+
+$f_{\text{rad,lower}}$ は幾何学的 View Factor で計算（セクション 2.3 の形態係数近似）。
+固定係数 0.3 は撤廃。
 
 **各項の根拠:**
-- **輻射項** $Q_{\text{rad}} \times 0.3$: ヒーターの輻射出力 $Q_{\text{rad}} = (1-f_{\text{conv}}) Q_{\text{heater}}$
-  のうち 30% が下層に到達（view factor 概算）。
-  出典: Hottel & Sarofim, "Radiative Transfer", 1967 — 形態係数の概念
-- **界面伝導**: Fourier の法則 $q = -k \nabla T$ をゾーン間に適用。
-  伝導距離を $0.1H$（室高の10%）とする粗い近似。$k_{\text{int}} = 0.5$ W/(m·K) は
-  分子熱伝導の ~20倍で、界面乱流混合の実効値
-- **壁面損失**: 上層と同様。$A_{\text{wall,lower}} = Pz_{\text{int}} + A_{\text{floor}}$
 
-### 3.4 界面の質量保存
+- **界面伝導**: Fourier の法則をゾーン間に適用。
+  実効距離 $0.1H$、$k_{\text{int}} = 0.5$ W/(m·K) は界面乱流混合の経験的パラメータ
+- **壁面損失**: $h_{\text{wall,eff}}$ は湿度連成（セクション 2.5 参照）。
+  $T_{\text{wall}}$ は壁面内面温度（lumped モデル時）
+
+### 3.4 壁面集中定数モデル
 
 $$
-A_{\text{floor}} \frac{dz_{\text{int}}}{dt} = -\frac{\dot{m}_p}{\rho_{\text{upper}}} + \dot{V}_{\text{return}}
+(\rho c_p)_w \delta_w A_{\text{wall}} \frac{dT_{\text{wall,inner}}}{dt}
+= Q_{\text{conv→wall}} + Q_{\text{rad}} - \frac{\lambda_w}{\delta_w} A_{\text{wall}} (T_{\text{wall,inner}} - T_{\text{wall,outer}})
+$$
+
+**導出:** 壁面パネルを厚さ $\delta_w$ の均一温度板として lumped capacitance 近似。
+Biot 数 $Bi = h \delta_w / \lambda_w = 8 \times 0.015 / 0.12 = 1.0$ で、
+厳密には lumped 近似の限界 ($Bi < 0.1$) を超えるが、木材内部の温度分布は
+本モデルの主要な不確実性に比べて小さいため許容する。
+
+- **出典:** Incropera, Ch.5 "Transient Conduction" — Lumped Capacitance Method
+- **分野:** 伝熱工学
+
+### 3.5 換気の質量・エネルギー保存への寄与
+
+換気モデル（セクション 2.7）が有効な場合、下層エネルギー保存に以下を追加:
+
+$$
+\dot{Q}_{\text{vent}} = \dot{m}_{\text{vent}} \, c_p \, (T_{\text{ambient}} - T_{\text{lower}})
+$$
+
+界面質量保存にも換気による体積変化を追加:
+
+$$
+\dot{V}_{\text{vent}} = \dot{m}_{\text{vent}} / \rho_{\text{lower}}
+$$
+
+### 3.6 界面の質量保存
+
+$$
+A_{\text{floor}} \frac{dz_{\text{int}}}{dt} = -\frac{\dot{m}_p}{\rho_{\text{upper}}} + \dot{V}_{\text{return}} - \dot{V}_{\text{steam}} + \dot{V}_{\text{vent}}
 $$
 
 **導出:**
-1. 体積保存 $V_{\text{upper}} + V_{\text{lower}} = V_{\text{total}}$ (一定)
-2. $dV_{\text{upper}}/dt = -A_{\text{floor}} \, dz_{\text{int}}/dt$（界面が下がると上層が増える）
-3. 上層への体積流入 = プルーム体積流量 $\dot{m}_p / \rho_{\text{upper}}$
-4. 上層からの体積流出 = 壁面冷却による下降流 $\dot{V}_{\text{return}}$
+
+1. 体積保存 $V_{\text{upper}} + V_{\text{lower}} = V_{\text{total}}$ (一定、換気なし時)
+2. $dV_{\text{upper}}/dt = -A_{\text{floor}} \, dz_{\text{int}}/dt$
+3. 上層への体積流入 = プルーム $\dot{m}_p / \rho_{\text{upper}}$
+4. 上層からの体積流出 = 壁面下降流 $\dot{V}_{\text{return}}$
+5. 蒸気膨張 = $\dot{V}_{\text{steam}}$（界面を押し下げる）
+6. 換気 = $\dot{V}_{\text{vent}}$（新鮮空気流入で界面を押し上げる）
 
 **リターンフロー $\dot{V}_{\text{return}}$ の根拠:**
 
