@@ -506,9 +506,9 @@ def build_case(case_yaml: Path, output_dir: Path | None = None) -> Path:
         delta_t = 1
         averaging_start = 0
 
-    # Determine mixture type from loyly config
+    # Determine mixture type: explicit solver.mixture overrides auto-detection
     loyly = data.get("loyly")
-    mixture_type = "multiComponent" if loyly else "pure"
+    mixture_type = solver.get("mixture", "multiComponent" if loyly else "pure")
 
     # Aufguss jet momentum source parameters
     aufguss = data.get("aufguss")
@@ -549,6 +549,8 @@ def build_case(case_yaml: Path, output_dir: Path | None = None) -> Path:
         "end_time": end_time,
         "write_interval": write_interval,
         "delta_t": delta_t,
+        "delta_t_initial": delta_t,
+        "max_delta_t": delta_t * 10,
         "averaging_start": averaging_start,
         "probes": probes,
         "mixture_type": mixture_type,

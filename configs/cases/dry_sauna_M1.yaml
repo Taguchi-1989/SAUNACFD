@@ -1,5 +1,5 @@
 case:
-  name: dry_sauna_steady
+  name: dry_sauna_M1
   description: "Dry sauna steady-state baseline — temperature stratification"
   type: steady
 
