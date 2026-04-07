@@ -560,6 +560,8 @@ def build_case(case_yaml: Path, output_dir: Path | None = None) -> Path:
         "buoyancy_production": buoyancy_production,
         "species_transport": species_transport,
         "radiation_model": radiation_model,
+        "turbulence_model": data.get("turbulence", {}).get("model", "kOmegaSST"),
+        "convection_scheme": data.get("turbulence", {}).get("convection_scheme", "linearUpwind"),
         "ventilation": vent_enabled,
         "T_ambient": vent_cfg.get("T_ambient", 293.15) if vent_enabled else 293.15,
     }

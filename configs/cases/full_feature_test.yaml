@@ -1,0 +1,70 @@
+case:
+  name: full_feature_test
+  description: "Full-feature test case: radiation + TVD + transition + ventilation + löyly"
+  type: transient
+
+geometry:
+  dimensions:
+    x: 3.0
+    y: 2.5
+    z: 2.5
+  mesh_level: M1
+
+boundary_conditions:
+  walls:
+    temperature: 293.15
+    type: mixed
+    model: lumped
+    thickness: 0.015
+    conductivity: 0.12
+    rho_cp: 500000
+  heater:
+    power_kw: 18.0
+    position:
+      x: 0.0
+      y: 0.1
+      z: 1.25
+    width: 0.6
+    height: 0.5
+
+solver:
+  name: buoyantPimpleFoam
+  end_time: 300
+  write_interval: 10
+  delta_t: 0.05
+  averaging_start: 150
+
+radiation:
+  model: viewFactor
+
+turbulence:
+  model: kOmegaSSTLM
+  convection_scheme: vanLeer
+
+ventilation:
+  model: supply_exhaust
+  T_ambient: 293.15
+  supply:
+    height: 0.2
+    area: 0.02
+    Cd: 0.6
+  exhaust:
+    height: 2.3
+    area: 0.03
+    Cd: 0.6
+
+loyly:
+  water_ml: 100
+  time: 60.0
+  tau_evap: 5.0
+
+probes:
+  - name: upper_bench
+    position: { x: 1.5, y: 2.0, z: 1.25 }
+    fields: [T, U]
+  - name: lower_bench
+    position: { x: 1.5, y: 0.8, z: 1.25 }
+    fields: [T, U]
+  - name: floor_level
+    position: { x: 1.5, y: 0.1, z: 1.25 }
+    fields: [T]

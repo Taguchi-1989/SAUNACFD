@@ -26,8 +26,16 @@ divSchemes
 {
     default         none;
     div(phi,U)      bounded Gauss linearUpwind grad(U);
+{% if convection_scheme | default("linearUpwind") == "vanLeer" %}
+    div(phi,T)      bounded Gauss vanLeer;
+    div(phi,h)      bounded Gauss vanLeer;
+{% elif convection_scheme | default("linearUpwind") == "limitedLinear" %}
+    div(phi,T)      bounded Gauss limitedLinear 1;
+    div(phi,h)      bounded Gauss limitedLinear 1;
+{% else %}
     div(phi,T)      bounded Gauss linearUpwind default;
     div(phi,h)      bounded Gauss linearUpwind default;
+{% endif %}
     div(phi,k)      bounded Gauss upwind;
     div(phi,omega)  bounded Gauss upwind;
     div(phi,epsilon) bounded Gauss upwind;

@@ -10,7 +10,11 @@ simulationType  RAS;
 
 RAS
 {
+{% if turbulence_model | default("kOmegaSST") == "kOmegaSSTLM" %}
+    RASModel        kOmegaSSTLM;
+{% else %}
     RASModel        kOmegaSST;
+{% endif %}
     turbulence      on;
     printCoeffs     on;
 }

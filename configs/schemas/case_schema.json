@@ -178,6 +178,26 @@
           "type": "number",
           "description": "Ambient air temperature at supply vent [K]",
           "default": 293.15
+        },
+        "supply": {
+          "type": "object",
+          "properties": {
+            "height": {"type": "number", "minimum": 0, "description": "Supply vent height [m]"},
+            "area": {"type": "number", "exclusiveMinimum": 0, "description": "Supply vent area [m2]"},
+            "Cd": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.6, "description": "Discharge coefficient"}
+          },
+          "required": ["height", "area"],
+          "additionalProperties": false
+        },
+        "exhaust": {
+          "type": "object",
+          "properties": {
+            "height": {"type": "number", "minimum": 0, "description": "Exhaust vent height [m]"},
+            "area": {"type": "number", "exclusiveMinimum": 0, "description": "Exhaust vent area [m2]"},
+            "Cd": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.6, "description": "Discharge coefficient"}
+          },
+          "required": ["height", "area"],
+          "additionalProperties": false
         }
       },
       "required": ["model"],
@@ -192,6 +212,36 @@
         "jet_velocity": {"type": "number", "minimum": 0, "default": 2.0, "description": "Jet velocity for OpenFOAM momentum source [m/s]"}
       },
       "required": ["beta_aug"],
+      "additionalProperties": false
+    },
+    "radiation": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "enum": ["none", "viewFactor", "fvDOM"],
+          "default": "none",
+          "description": "Radiation model: none, viewFactor (wall-to-wall), fvDOM (full DOM)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "turbulence": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "enum": ["kOmegaSST", "kOmegaSSTLM"],
+          "default": "kOmegaSST",
+          "description": "Turbulence model: kOmegaSST (standard) or kOmegaSSTLM (with transition)"
+        },
+        "convection_scheme": {
+          "type": "string",
+          "enum": ["linearUpwind", "vanLeer", "limitedLinear"],
+          "default": "linearUpwind",
+          "description": "Convection scheme for T/h: linearUpwind (2nd order) or TVD limiter"
+        }
+      },
       "additionalProperties": false
     },
     "validation": {
