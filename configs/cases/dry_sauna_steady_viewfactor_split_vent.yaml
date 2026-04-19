@@ -1,6 +1,6 @@
 case:
-  name: dry_sauna_steady_viewfactor_split
-  description: "Case I: viewFactor + split heat source (13kW vol + ~5kW radiation via fixedT wall)"
+  name: dry_sauna_steady_viewfactor_split_vent
+  description: "Case J: viewFactor split (13kW vol + ~5kW rad) + ventilation + wall 0.08m"
   type: steady
 
 geometry:
@@ -29,6 +29,16 @@ boundary_conditions:
     width: 0.6
     height: 0.5
     wall_fixed_T: 573.15
+
+ventilation:
+  model: supply_exhaust
+  T_ambient: 293.15
+  supply:
+    height: 0.3
+    area: 0.01
+  exhaust:
+    height: 2.2
+    area: 0.015
 
 radiation:
   model: viewFactor
