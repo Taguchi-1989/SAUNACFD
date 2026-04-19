@@ -31,8 +31,9 @@ constantAbsorptionEmissionCoeffs
 {% elif radiation_model | default("viewFactor") == "viewFactor" %}
 viewFactorCoeffs
 {
-    smoothing       0;
+    smoothing           false;
     constantEmissivity  true;
+    useDirectSolver     true;
 }
 
 // Transparent medium (air does not absorb/emit IR radiation)
@@ -40,9 +41,9 @@ absorptionEmissionModel constantAbsorptionEmission;
 
 constantAbsorptionEmissionCoeffs
 {
-    absorptivity    0;
-    emissivity      0;
-    E               0;
+    absorptivity    absorptivity [0 -1 0 0 0 0 0] 0.0;
+    emissivity      emissivity   [0 -1 0 0 0 0 0] 0.0;
+    E               E            [1 -1 -3 0 0 0 0] 0.0;
 }
 {% endif %}
 

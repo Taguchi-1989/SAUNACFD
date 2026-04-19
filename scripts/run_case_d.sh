@@ -29,8 +29,38 @@ if [ -f system/topoSetDict ]; then
     echo "topoSet done, exit=$?"
 fi
 
-echo "=== buoyantPimpleFoam (600s physical time) ==="
-buoyantPimpleFoam > log.solver 2>&1 || true
+# Generate view factors for radiation model if enabled
+if grep -q "radiationModel.*viewFactor" constant/radiationProperties 2>/dev/null; then
+    echo "=== faceAgglomerate ==="
+    faceAgglomerate -dict constant/viewFactorsDict > log.faceAgglomerate 2>&1
+    FA_EXIT=$?
+    echo "faceAgglomerate done, exit=$FA_EXIT"
+    if [ $FA_EXIT -ne 0 ]; then
+        echo "ERROR: faceAgglomerate failed"
+        cat log.faceAgglomerate
+        exit 1
+    fi
+    # Verify finalAgglom was created
+    if [ ! -f constant/finalAgglom ]; then
+        echo "ERROR: constant/finalAgglom not created by faceAgglomerate"
+        exit 1
+    fi
+
+    echo "=== viewFactorsGen ==="
+    viewFactorsGen > log.viewFactorsGen 2>&1
+    VF_EXIT=$?
+    echo "viewFactorsGen done, exit=$VF_EXIT"
+    grep "coarse faces" log.viewFactorsGen || true
+    if [ $VF_EXIT -ne 0 ]; then
+        echo "ERROR: viewFactorsGen failed"
+        tail -20 log.viewFactorsGen
+        exit 1
+    fi
+fi
+
+SOLVER=$(grep "^application" system/controlDict | awk '{print $2}' | tr -d ';\r\n')
+echo "=== $SOLVER ==="
+$SOLVER > log.solver 2>&1 || true
 
 echo ""
 echo "--- Errors ---"

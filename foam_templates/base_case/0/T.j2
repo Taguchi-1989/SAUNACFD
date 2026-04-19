@@ -37,7 +37,10 @@ boundaryField
 
     heater_wall
     {
-{% if heater_model | default("surface_flux") == "volume_source" %}
+{% if heater_wall_fixed_T | default(0) > 0 %}
+        type            fixedValue;
+        value           uniform {{ heater_wall_fixed_T }};
+{% elif heater_model | default("surface_flux") == "volume_source" %}
         type            externalWallHeatFluxTemperature;
         mode            coefficient;
         h               uniform {{ wall_htc | default(1.0) }};

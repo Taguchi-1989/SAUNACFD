@@ -31,6 +31,9 @@ boundary
     floor
     {
         type wall;
+{% if radiation_model | default("none") == "viewFactor" %}
+        inGroups 2(wall viewFactorWall);
+{% endif %}
         faces
         (
 {% for face in floor_faces %}
@@ -41,6 +44,9 @@ boundary
     ceiling
     {
         type wall;
+{% if radiation_model | default("none") == "viewFactor" %}
+        inGroups 2(wall viewFactorWall);
+{% endif %}
         faces
         (
 {% for face in ceiling_faces %}
@@ -51,6 +57,9 @@ boundary
     heater_wall
     {
         type wall;
+{% if radiation_model | default("none") == "viewFactor" %}
+        inGroups 2(wall viewFactorWall);
+{% endif %}
         faces
         (
 {% for face in heater_faces %}
@@ -61,6 +70,9 @@ boundary
     heater_wall_surround
     {
         type wall;
+{% if radiation_model | default("none") == "viewFactor" %}
+        inGroups 2(wall viewFactorWall);
+{% endif %}
         faces
         (
 {% for face in heater_surround_faces %}
@@ -71,6 +83,9 @@ boundary
     opposite_wall
     {
         type wall;
+{% if radiation_model | default("none") == "viewFactor" %}
+        inGroups 2(wall viewFactorWall);
+{% endif %}
         faces
         (
 {% for face in opposite_faces %}
@@ -81,6 +96,9 @@ boundary
     front
     {
         type wall;
+{% if radiation_model | default("none") == "viewFactor" %}
+        inGroups 2(wall viewFactorWall);
+{% endif %}
         faces
         (
 {% for face in front_faces %}
@@ -91,6 +109,9 @@ boundary
     back
     {
         type wall;
+{% if radiation_model | default("none") == "viewFactor" %}
+        inGroups 2(wall viewFactorWall);
+{% endif %}
         faces
         (
 {% for face in back_faces %}

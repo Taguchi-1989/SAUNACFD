@@ -576,6 +576,7 @@ def build_case(case_yaml: Path, output_dir: Path | None = None) -> Path:
         "buoyancy_production": buoyancy_production,
         "species_transport": species_transport,
         "radiation_model": radiation_model,
+        "heater_wall_fixed_T": data["boundary_conditions"].get("heater", {}).get("wall_fixed_T", 0),
         "turbulence_model": data.get("turbulence", {}).get("model", "kOmegaSST"),
         "convection_scheme": data.get("turbulence", {}).get("convection_scheme", "linearUpwind"),
         "ventilation": vent_enabled,

@@ -17,22 +17,11 @@ boundaryField
 {% if radiation_model | default("none") == "viewFactor" %}
         type            greyDiffusiveRadiationViewFactor;
         qro             uniform 0;
-        emissivityMode  lookup;
-        emissivity      uniform 0.9;
+        emissivityMode  solidRadiation;
         value           uniform 0;
 {% else %}
         type            calculated;
         value           uniform 0;
 {% endif %}
     }
-{% if radiation_model | default("none") == "viewFactor" %}
-    heater_wall
-    {
-        type            greyDiffusiveRadiationViewFactor;
-        qro             uniform 0;
-        emissivityMode  lookup;
-        emissivity      uniform 0.85;
-        value           uniform 0;
-    }
-{% endif %}
 }

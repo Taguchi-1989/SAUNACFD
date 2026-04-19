@@ -105,6 +105,11 @@
               "exclusiveMinimum": 0,
               "default": 0.3,
               "description": "Heater depth in x-direction [m] (used for volume_source cellZone)"
+            },
+            "wall_fixed_T": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Fixed heater wall temperature [K]. Overrides heater_wall BC to fixedValue."
             }
           },
           "additionalProperties": false

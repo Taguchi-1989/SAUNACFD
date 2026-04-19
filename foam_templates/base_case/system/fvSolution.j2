@@ -57,6 +57,22 @@ solvers
         tolerance       1e-7;
         relTol          0.1;
     }
+
+{% if radiation_model | default("none") == "viewFactor" %}
+    qr
+    {
+        solver          GAMG;
+        smoother        GaussSeidel;
+        tolerance       1e-4;
+        relTol          0.1;
+    }
+
+    qrFinal
+    {
+        $qr;
+        relTol          0;
+    }
+{% endif %}
 }
 
 {% if solver_name == "buoyantPimpleFoam" %}

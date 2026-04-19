@@ -26,7 +26,7 @@ cp -r "$SRC" "$WORK_DIR"
 cd "$WORK_DIR"
 
 # Detect solver from controlDict
-SOLVER=$(grep "^application" system/controlDict | awk '{print $2}' | tr -d ';')
+SOLVER=$(grep "^application" system/controlDict | awk '{print $2}' | tr -d ';\r\n')
 echo "=== Case: $CASE_NAME | Solver: $SOLVER ==="
 
 echo "=== blockMesh ==="
@@ -35,6 +35,23 @@ blockMesh > log.blockMesh 2>&1
 if [ "$RUN_TOPOSET" = true ] && [ -f system/topoSetDict ]; then
     echo "=== topoSet (heaterZone) ==="
     topoSet > log.topoSet 2>&1
+fi
+
+# viewFactor radiation preprocessing
+if grep -q "radiationModel.*viewFactor" constant/radiationProperties 2>/dev/null; then
+    echo "=== faceAgglomerate ==="
+    faceAgglomerate -dict constant/viewFactorsDict > log.faceAgglomerate 2>&1
+    echo "faceAgglomerate done, exit=$?"
+    if [ ! -f constant/finalAgglom ]; then
+        echo "ERROR: constant/finalAgglom not created"
+        cat log.faceAgglomerate
+        exit 1
+    fi
+
+    echo "=== viewFactorsGen ==="
+    viewFactorsGen > log.viewFactorsGen 2>&1
+    echo "viewFactorsGen done, exit=$?"
+    grep "coarse faces" log.viewFactorsGen || true
 fi
 
 echo "=== $SOLVER ==="
