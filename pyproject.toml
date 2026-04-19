@@ -17,6 +17,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+daq = [
+    "pyserial>=3.5",
+]
 dev = [
     "pytest>=7.4",
     "pytest-cov>=4.1",
@@ -28,6 +31,7 @@ dev = [
 
 [project.scripts]
 saunaflow = "harness.cli:main"
+saunaflow-daq = "daq.cli:daq"
 
 [tool.setuptools.packages.find]
 where = ["src"]
