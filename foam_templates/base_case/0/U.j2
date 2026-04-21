@@ -19,13 +19,25 @@ boundaryField
 {% if ventilation | default(false) %}
     supply_vent
     {
+{% if supply_velocity | default(0) > 0 %}
+        // Scaled velocity: YAML area -> patch area ratio
+        type            fixedValue;
+        value           uniform ({{ supply_velocity }} 0 0);
+{% else %}
         type            pressureInletOutletVelocity;
         value           uniform (0 0 0);
+{% endif %}
     }
     exhaust_vent
     {
+{% if exhaust_velocity | default(0) > 0 %}
+        // Scaled velocity: YAML area -> patch area ratio
+        type            fixedValue;
+        value           uniform ({{ exhaust_velocity }} 0 0);
+{% else %}
         type            pressureInletOutletVelocity;
         value           uniform (0 0 0);
+{% endif %}
     }
 {% endif %}
 }

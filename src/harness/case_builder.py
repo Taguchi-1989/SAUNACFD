@@ -219,6 +219,15 @@ def _build_block_mesh_context(
     if vent_enabled:
         result["supply_vent_faces"] = supply_vent_faces
         result["exhaust_vent_faces"] = exhaust_vent_faces
+        # Compute actual patch areas from mesh segment geometry
+        if supply_vent_seg is not None:
+            sy, sz = supply_vent_seg
+            supply_patch_area = (y_points[sy + 1] - y_points[sy]) * (z_points[sz + 1] - z_points[sz])
+            result["supply_patch_area"] = round(supply_patch_area, 6)
+        if exhaust_vent_seg is not None:
+            ey, ez = exhaust_vent_seg
+            exhaust_patch_area = (y_points[ey + 1] - y_points[ey]) * (z_points[ez + 1] - z_points[ez])
+            result["exhaust_patch_area"] = round(exhaust_patch_area, 6)
     return result
 
 
@@ -582,6 +591,25 @@ def build_case(case_yaml: Path, output_dir: Path | None = None) -> Path:
         "ventilation": vent_enabled,
         "T_ambient": vent_cfg.get("T_ambient", 293.15) if vent_enabled else 293.15,
     }
+
+    # Ventilation velocity scaling: YAML 'area' is the effective opening area.
+    # We assume a reference vent velocity of 1.0 m/s through the real opening,
+    # then scale by (YAML area / actual patch area) to get the BC velocity.
+    if vent_enabled and "supply_patch_area" in mesh:
+        vent_ref_velocity = 1.0  # m/s through the real opening
+        supply_area_yaml = vent_cfg.get("supply", {}).get("area", 0.01)
+        exhaust_area_yaml = vent_cfg.get("exhaust", {}).get("area", 0.015)
+        supply_patch_area = mesh["supply_patch_area"]
+        exhaust_patch_area = mesh["exhaust_patch_area"]
+        # Scale velocity so that Q = v_bc * A_patch = v_ref * A_yaml
+        context["supply_velocity"] = round(
+            vent_ref_velocity * supply_area_yaml / max(supply_patch_area, 1e-9), 6
+        )
+        context["exhaust_velocity"] = round(
+            vent_ref_velocity * exhaust_area_yaml / max(exhaust_patch_area, 1e-9), 6
+        )
+        context["supply_patch_area"] = supply_patch_area
+        context["exhaust_patch_area"] = exhaust_patch_area
 
     # Skip vapor field template for pure mixture cases
     skip: list[str] = []
