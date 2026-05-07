@@ -72,6 +72,16 @@ class SaunaEvent:
 # ---------------------------------------------------------------------------
 
 EVENTS: list[SaunaEvent] = [
+    # (0) Finnish dry 90°C pure baseline — no löyly, no Aufguss.
+    # Reference for the "humidity paradox" comparison.
+    SaunaEvent(
+        name="Finnish dry 90°C",
+        duration_s=300.0,
+        base_t_air_c=90.0, base_rh=0.05, base_v=0.10, base_t_mrt_c=95.0,
+        volume_m3=10.0,
+        pour_times_s=[],
+    ),
+
     # (1) Single löyly: hot dry baseline, one pour at t=15s, observe decay
     SaunaEvent(
         name="Single löyly (1 ladle)",
@@ -313,6 +323,194 @@ def plot_q_components_for_aufguss(s: dict, event: SaunaEvent, out_path: Path) ->
     print(f"  wrote {out_path}")
 
 
+_EVENT_COLORS = {
+    "Finnish dry 90°C":      "tab:gray",
+    "Single löyly (1 ladle)": "tab:blue",
+    "Aufguss session":        "tab:orange",
+    "Shikiji herbal":         "tab:green",
+    "Kagaya progressive":     "tab:purple",
+}
+
+
+def plot_comparison_dashboard(
+    series: list[tuple[SaunaEvent, dict]], out_path: Path,
+) -> None:
+    """All events overlaid on shared axes — q(t), T_eq(t), Q_cum(t)."""
+    fig, (ax_q, ax_te, ax_Q) = plt.subplots(3, 1, figsize=(13, 10), sharex=True)
+
+    for event, s in series:
+        color = _EVENT_COLORS.get(event.name)
+        # q(t) ---------------------------------------------------------------
+        ax_q.plot(s["t"], s["q"], color=color, linewidth=1.8, label=event.name)
+        # peak annotation
+        i_pk = int(np.argmax(s["q"]))
+        ax_q.scatter(s["t"][i_pk], s["q"][i_pk], color=color, s=40, zorder=5)
+        ax_q.annotate(
+            f"{s['q'][i_pk]:.0f} W/m²",
+            xy=(s["t"][i_pk], s["q"][i_pk]),
+            xytext=(6, 6), textcoords="offset points",
+            fontsize=8, color=color,
+        )
+        # T_eq(t) ------------------------------------------------------------
+        ax_te.plot(s["t"], s["t_eq"], color=color, linewidth=1.8, label=event.name)
+        i_pk = int(np.argmax(s["t_eq"]))
+        ax_te.scatter(s["t"][i_pk], s["t_eq"][i_pk], color=color, s=40, zorder=5)
+        ax_te.annotate(
+            f"{s['t_eq'][i_pk]:.1f}°C",
+            xy=(s["t"][i_pk], s["t_eq"][i_pk]),
+            xytext=(6, 6), textcoords="offset points",
+            fontsize=8, color=color,
+        )
+        # Q_cum(t) -----------------------------------------------------------
+        Q_kJ = s["Q_cum"] / 1000.0
+        ax_Q.plot(s["t"], Q_kJ, color=color, linewidth=1.8, label=event.name)
+        ax_Q.annotate(
+            f"{Q_kJ[-1]:.0f} kJ/m²",
+            xy=(s["t"][-1], Q_kJ[-1]),
+            xytext=(6, -3), textcoords="offset points",
+            fontsize=8, color=color,
+        )
+        # Pour markers as small ticks at the bottom of q axis
+        for pt in event.pour_times_s:
+            ax_q.axvline(pt, color=color, alpha=0.25, linewidth=0.7)
+
+    # Reference line: 1 ladle latent budget per body
+    latent_per_m2 = (LATENT_HEAT_VAPORIZATION * 0.1) / BODY_SURFACE_AREA_M2 / 1000.0
+    ax_Q.axhline(latent_per_m2, color="black", linestyle="--", linewidth=1.0,
+                 label=f"1 ladle latent / 1.8 m² = {latent_per_m2:.0f} kJ/m²")
+
+    ax_q.set_ylabel("q [W/m²]")
+    ax_q.set_title("Whole-body skin heat flux")
+    ax_q.grid(True, alpha=0.3)
+    ax_q.legend(fontsize=9, loc="upper left", ncol=2)
+
+    ax_te.set_ylabel("T_equivalent [°C]")
+    ax_te.set_title("Perceived (equivalent) skin temperature")
+    ax_te.grid(True, alpha=0.3)
+
+    ax_Q.set_ylabel("Q_cum [kJ/m²]")
+    ax_Q.set_xlabel("time [s]")
+    ax_Q.set_title("Cumulative absorbed energy")
+    ax_Q.grid(True, alpha=0.3)
+    ax_Q.legend(fontsize=8, loc="upper left")
+
+    fig.suptitle(
+        "Sauna events compared on shared axes — "
+        "all 5 scenarios overlaid (peaks annotated)",
+        fontsize=12,
+    )
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=120)
+    plt.close(fig)
+    print(f"  wrote {out_path}")
+
+
+def plot_humidity_paradox(
+    series: list[tuple[SaunaEvent, dict]], out_path: Path,
+) -> None:
+    """Side-by-side: 90°C dry vs 60°C humid. Shows the humidity paradox."""
+    by_name = {e.name: (e, s) for e, s in series}
+    if "Finnish dry 90°C" not in by_name or "Shikiji herbal" not in by_name:
+        print("  [skip] need both 'Finnish dry 90°C' and 'Shikiji herbal' events")
+        return
+
+    pairs = [
+        ("Finnish dry 90°C",  "tab:gray",  "Hot dry  (90°C, RH 5%)"),
+        ("Shikiji herbal",    "tab:green", "Cool humid  (60°C, RH 95%)"),
+    ]
+
+    fig = plt.figure(figsize=(13, 9))
+    gs = fig.add_gridspec(3, 2, height_ratios=[1, 1, 1.1], hspace=0.35, wspace=0.25)
+
+    ax_q = fig.add_subplot(gs[0, :])
+    ax_te = fig.add_subplot(gs[1, :], sharex=ax_q)
+    ax_bar = fig.add_subplot(gs[2, 0])
+    ax_text = fig.add_subplot(gs[2, 1])
+    ax_text.axis("off")
+
+    summary = []
+    for name, color, label in pairs:
+        event, s = by_name[name]
+        ax_q.plot(s["t"], s["q"], color=color, linewidth=2.2, label=label)
+        ax_te.plot(s["t"], s["t_eq"], color=color, linewidth=2.2, label=label)
+        # average over the steady window (last 60 s) for a clean number
+        i_ss = max(0, len(s["t"]) - 61)
+        q_avg = float(s["q"][i_ss:].mean())
+        te_avg = float(s["t_eq"][i_ss:].mean())
+        wb_qc = float(s["q_conv"][i_ss:].mean())
+        wb_qr = float(s["q_rad"][i_ss:].mean())
+        wb_qe = float(s["q_evap"][i_ss:].mean())
+        summary.append((label, color, q_avg, te_avg, wb_qc, wb_qr, wb_qe))
+
+    ax_q.set_ylabel("q [W/m²]")
+    ax_q.set_title("Whole-body skin heat flux")
+    ax_q.grid(True, alpha=0.3)
+    ax_q.legend(fontsize=10, loc="lower right")
+
+    ax_te.set_ylabel("T_equivalent [°C]")
+    ax_te.set_xlabel("time [s]")
+    ax_te.set_title("Perceived (equivalent) skin temperature")
+    ax_te.grid(True, alpha=0.3)
+    ax_te.legend(fontsize=10, loc="lower right")
+
+    # Component breakdown bar (steady values)
+    x = np.arange(len(summary))
+    bottoms_pos = np.zeros(len(summary))
+    bottoms_neg = np.zeros(len(summary))
+    component_labels = ["q_conv", "q_rad", "q_evap"]
+    component_colors = ["tab:red", "tab:orange", "tab:blue"]
+    components = [[s[4] for s in summary], [s[5] for s in summary], [s[6] for s in summary]]
+    for vals, color, lbl in zip(components, component_colors, component_labels, strict=True):
+        arr = np.array(vals)
+        pos = np.where(arr > 0, arr, 0)
+        neg = np.where(arr < 0, arr, 0)
+        ax_bar.bar(x, pos, width=0.6, bottom=bottoms_pos, color=color, alpha=0.85,
+                   edgecolor="black", linewidth=0.4, label=lbl)
+        ax_bar.bar(x, neg, width=0.6, bottom=bottoms_neg, color=color, alpha=0.85,
+                   edgecolor="black", linewidth=0.4)
+        bottoms_pos += pos
+        bottoms_neg += neg
+    totals = [s[2] for s in summary]
+    ax_bar.scatter(x, totals, marker="D", color="black", s=60, zorder=5,
+                   label="q_total")
+    ax_bar.axhline(0, color="black", linewidth=0.5)
+    ax_bar.set_xticks(x)
+    ax_bar.set_xticklabels([s[0] for s in summary], fontsize=9)
+    ax_bar.set_ylabel("Heat flux [W/m²]")
+    ax_bar.set_title("Steady-state component breakdown")
+    ax_bar.grid(True, axis="y", alpha=0.3)
+    ax_bar.legend(fontsize=8, loc="lower left")
+
+    # Narrative text on the right
+    label_dry, _, q_dry, te_dry, qc_dry, qr_dry, qe_dry = summary[0]
+    label_wet, _, q_wet, te_wet, qc_wet, qr_wet, qe_wet = summary[1]
+    width_text = (
+        f"$\\bf{{The\\ humidity\\ paradox}}$\n\n"
+        f"Hot dry ({label_dry.split('  ')[1]}):\n"
+        f"   q_total = {q_dry:.0f} W/m²,  T_eq = {te_dry:.1f}°C\n"
+        f"   q_conv = {qc_dry:.0f}, q_rad = {qr_dry:.0f}, q_evap = {qe_dry:.0f}\n"
+        f"   (sweat evaporation cools)\n\n"
+        f"Cool humid ({label_wet.split('  ')[1]}):\n"
+        f"   q_total = {q_wet:.0f} W/m²,  T_eq = {te_wet:.1f}°C\n"
+        f"   q_conv = {qc_wet:.0f}, q_rad = {qr_wet:.0f}, q_evap = {qe_wet:.0f}\n"
+        f"   (vapor condensation heats)\n\n"
+        f"Lower air temp, but {q_wet/q_dry:.1f}× the heat flux\n"
+        f"and  {te_wet - te_dry:+.0f}°C  perceived temperature.\n\n"
+        f"Driver: at 60°C P_sat = 19.9 kPa.\n"
+        f"95% RH puts P_vapor far above\n"
+        f"P_sat,skin (5.94 kPa) → strong\n"
+        f"condensation onto skin."
+    )
+    ax_text.text(0.0, 1.0, width_text, fontsize=10, va="top", ha="left",
+                 family="monospace")
+
+    fig.suptitle("Humidity paradox: cool + humid > hot + dry on the skin",
+                 fontsize=13)
+    fig.savefig(out_path, dpi=120, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  wrote {out_path}")
+
+
 def plot_energy_per_ladle(series: list[tuple[SaunaEvent, dict]], out_path: Path) -> None:
     """Bar chart: total Q delivered vs latent heat budget per ladle."""
     fig, (ax_left, ax_right) = plt.subplots(1, 2, figsize=(13, 5))
@@ -469,6 +667,8 @@ def main() -> None:
             )
             break
     plot_energy_per_ladle(series, out_dir / "energy_per_ladle.png")
+    plot_comparison_dashboard(series, out_dir / "comparison_dashboard.png")
+    plot_humidity_paradox(series, out_dir / "humidity_paradox.png")
 
     print_summary(series)
 
