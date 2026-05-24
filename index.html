@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>SaunaFlow ロウリュ体感温度シミュレータ (0次元)</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<style>
+  html, body { height: 100%; margin: 0; overflow: hidden; font-family: -apple-system, "Segoe UI", "Hiragino Sans", sans-serif; background: #1a1a1a; color: #e8e8e8; }
+  /* ── ヘッダー ── */
+  .hdr { padding: 10px 16px 0; flex-shrink: 0; }
+  h1 { font-size: 17px; margin: 0 0 2px; color: #ffb96b; }
+  .sub { font-size: 11px; color: #888; margin-bottom: 8px; }
+  /* ── タブ ── */
+  .tabs { display: flex; gap: 0; padding: 0 16px; border-bottom: 1px solid #333; flex-shrink: 0; }
+  .tab-btn { padding: 7px 18px; background: none; border: none; border-bottom: 2px solid transparent; color: #999; cursor: pointer; font-size: 13px; margin-bottom: -1px; transition: color .15s; }
+  .tab-btn:hover { color: #ccc; }
+  .tab-btn.active { color: #ffb96b; border-bottom-color: #ffb96b; }
+  /* ── タブパネル ── */
+  .tab-panels { flex: 1; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+  .tab-pane { display: none; }
+  .tab-pane.active { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+  /* ── シミュレータ ── */
+  .sim-wrap { display: grid; grid-template-columns: 320px 1fr; gap: 16px; padding: 14px 16px; flex: 1; overflow: hidden; box-sizing: border-box; min-height: 0; }
+  .left-scroll { overflow-y: auto; min-height: 0; padding-right: 4px; }
+  .right-scroll { overflow-y: auto; min-height: 0; }
+  /* ── 計算ロジックタブ ── */
+  .logic-wrap { flex: 1; overflow-y: auto; padding: 14px 16px; box-sizing: border-box; min-height: 0; }
+  /* ── パネル共通 ── */
+  .panel { background: #242424; border: 1px solid #333; border-radius: 6px; padding: 14px; }
+  .control { margin-bottom: 14px; }
+  .control label { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; color: #ccc; }
+  .control label .val { color: #ffb96b; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .control input[type=range] { width: 100%; }
+  .kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 14px; }
+  .kpi { background: #2d2d2d; border-radius: 4px; padding: 8px 10px; }
+  .kpi .lbl { font-size: 10px; color: #999; text-transform: uppercase; letter-spacing: 0.5px; }
+  .kpi .num { font-size: 18px; font-weight: 700; color: #ffb96b; font-variant-numeric: tabular-nums; }
+  .kpi .unit { font-size: 11px; color: #aaa; margin-left: 2px; }
+  .warn { background: #5a2222; border-color: #a04040; }
+  .warn .num { color: #ff8080; }
+  .ok .num { color: #80d080; }
+  canvas { background: #1e1e1e; border-radius: 4px; }
+  .note { font-size: 10px; color: #888; margin-top: 8px; line-height: 1.4; }
+  details { margin-top: 12px; font-size: 11px; color: #aaa; }
+  summary { cursor: pointer; color: #ffb96b; }
+  /* ── ロジックタブ内 ── */
+  .flowwrap h2 { font-size: 14px; color: #ffb96b; margin: 0 0 8px; }
+  .flowwrap .cap { font-size: 11px; color: #888; margin: 4px 0 10px; line-height: 1.5; }
+  .flowcol { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .mermaid { background: #1e1e1e; border-radius: 4px; padding: 10px; overflow-x: auto; }
+  .legend { font-size: 10px; color: #aaa; display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 10px; }
+  .legend code { background:#333; padding:1px 5px; border-radius:3px; color:#ffb96b; }
+  @media (max-width: 1100px) { .flowcol { grid-template-columns: 1fr; } }
+  /* ── ポップオーバー ── */
+  .info-btn { display:inline-block; width:14px; height:14px; border-radius:50%; background:#444; color:#ffb96b; font-size:10px; text-align:center; line-height:14px; cursor:pointer; margin-left:4px; font-weight:700; user-select:none; }
+  .info-btn:hover { background:#ffb96b; color:#1a1a1a; }
+  .popover { position:fixed; max-width:420px; background:#2a2a2a; border:1.5px solid #ffb96b; border-radius:6px; padding:14px 16px; z-index:1000; display:none; font-size:12px; line-height:1.6; box-shadow:0 8px 24px rgba(0,0,0,0.6); color:#e8e8e8; }
+  .popover.show { display:block; }
+  .popover h3 { margin:0 0 6px; color:#ffb96b; font-size:13px; padding-right:20px; }
+  .popover .close { position:absolute; top:6px; right:10px; cursor:pointer; color:#888; font-size:18px; line-height:1; }
+  .popover .close:hover { color:#fff; }
+  .popover .formula { background:#1e1e1e; padding:10px 12px; border-radius:4px; margin:8px 0; overflow-x:auto; }
+  .popover .notes { font-size:11px; color:#aaa; margin-top:6px; border-top:1px dashed #555; padding-top:6px; }
+  .popover code { background:#1e1e1e; padding:1px 4px; border-radius:3px; color:#ffb96b; }
+  .termbar { display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-bottom:8px; padding:6px 10px; background:#1e1e1e; border-radius:4px; font-size:11px; color:#ddd; }
+  .termbar .label { color:#999; }
+  .termbar .term { display:inline-flex; align-items:center; gap:4px; }
+  .termbar .swatch { width:10px; height:10px; border-radius:2px; display:inline-block; }
+</style>
+</head>
+<body style="display:flex; flex-direction:column;">
+<div class="popover" id="popover">
+  <span class="close" id="popClose">&times;</span>
+  <h3 id="popTitle"></h3>
+  <div id="popSummary"></div>
+  <div class="formula" id="popFormula"></div>
+  <div class="notes" id="popNotes"></div>
+</div>
+
+<div class="hdr">
+  <h1>SaunaFlow — ロウリュ体感温度シミュレータ (0次元・室内平均)</h1>
+  <div class="sub">作成日: 2026-05-14 ／ 作者: <span style="color:#ffb96b; font-weight:600;">ZEAL-BOOT-CAMP</span></div>
+</div>
+<div class="tabs">
+  <button class="tab-btn active" data-tab="sim">シミュレータ</button>
+  <button class="tab-btn" data-tab="logic">計算ロジック</button>
+</div>
+<div class="tab-panels">
+
+<!-- ===== タブ1: シミュレータ ===== -->
+<div class="tab-pane active" id="pane-sim">
+<div class="sim-wrap">
+  <div class="left-scroll">
+  <div class="panel">
+    <div class="control">
+      <label>室容積 V <span style="color:#888;font-size:10px">(目安: 6–10)</span> <span class="val"><span id="vVal">8</span> m³</span></label>
+      <input type="range" id="V" min="2" max="30" step="0.5" value="8">
+    </div>
+    <div class="control">
+      <label>初期気温 T₀ <span style="color:#888;font-size:10px">(目安: 80–95)</span> <span class="val"><span id="t0Val">85</span> °C</span></label>
+      <input type="range" id="T0" min="40" max="110" step="1" value="85">
+    </div>
+    <div class="control">
+      <label>初期相対湿度 RH₀ <span style="color:#888;font-size:10px">(目安: 5–15)</span> <span class="val"><span id="rh0Val">10</span> %</span></label>
+      <input type="range" id="RH0" min="2" max="50" step="1" value="10">
+    </div>
+    <div class="control">
+      <label>ロウリュ水量 (1杯) <span style="color:#888;font-size:10px">(目安: 50–150)</span> <span class="val"><span id="mwVal">100</span> ml</span></label>
+      <input type="range" id="mw" min="0" max="500" step="10" value="100">
+    </div>
+    <div class="control">
+      <label>蒸発時間 <span style="color:#888;font-size:10px">(目安: 10–20)</span> <span class="val"><span id="tevVal">15</span> 秒</span></label>
+      <input type="range" id="tev" min="2" max="60" step="1" value="15">
+    </div>
+    <div class="control">
+      <label>ヒーター出力 <span style="color:#888;font-size:10px">(目安: 4–8)</span> <span class="val"><span id="qhVal">6</span> kW</span></label>
+      <input type="range" id="Qh" min="0" max="12" step="0.5" value="6">
+    </div>
+    <div class="control">
+      <label>換気率 ACH <span style="color:#888;font-size:10px">(目安: 1–3)</span> <span class="val"><span id="achVal">2</span> 回/h</span></label>
+      <input type="range" id="ACH" min="0" max="20" step="0.5" value="2">
+    </div>
+    <div class="control">
+      <label>壁面温度 (結露判定用) <span style="color:#888;font-size:10px">(目安: 60–80)</span> <span class="val"><span id="twVal">70</span> °C</span></label>
+      <input type="range" id="Tw" min="20" max="100" step="1" value="70">
+    </div>
+    <hr style="border-color:#333; margin:14px 0">
+    <div style="font-size:11px; color:#999; margin-bottom:8px">— 熱流束（肌側）—</div>
+    <div class="control">
+      <label>肌温度 T_skin <span style="color:#888;font-size:10px">(目安: 34–36)</span> <span class="val"><span id="tsVal">35</span> °C</span></label>
+      <input type="range" id="Ts" min="28" max="40" step="0.5" value="35">
+    </div>
+    <div class="control">
+      <label>風速 v <span style="color:#888;font-size:10px">(0.1静止 / 1扇ぎ / 3Aufguss)</span> <span class="val"><span id="vAirVal">0.5</span> m/s</span></label>
+      <input type="range" id="vAir" min="0" max="5" step="0.1" value="0.5">
+      <label style="font-size:10px; color:#aaa; margin-top:4px; display:flex; align-items:center; gap:6px;">
+        <input type="checkbox" id="vDrivesHc" checked style="margin:0;">
+        h_c を風速から自動計算 (Mitchell: <span id="hcFromV" style="color:#ffb96b;">5.0</span> W/m²K)
+      </label>
+    </div>
+    <div class="control">
+      <label>対流伝達率 h_c <span style="color:#888;font-size:10px">(目安: 4–8)</span> <span class="val"><span id="hcVal">5</span> W/m²K</span></label>
+      <input type="range" id="hc" min="2" max="40" step="0.5" value="5">
+    </div>
+    <div class="control">
+      <label>放射壁温 T_rad <span style="color:#888;font-size:10px">(目安: 80–120)</span> <span class="val"><span id="trVal">90</span> °C</span></label>
+      <input type="range" id="Tr" min="40" max="200" step="2" value="90">
+    </div>
+
+    <details>
+      <summary>計算式・前提（出典リンク付き）</summary>
+      <ul style="padding-left:18px; margin:6px 0; line-height:1.6;">
+        <li>飽和蒸気圧: Tetens式 e_s=611.2·exp(17.67T/(T+243.5)) Pa<br>
+          → <a href="https://doi.org/10.1175/1520-0493(1980)108%3C1046:TCOEPT%3E2.0.CO;2" target="_blank" style="color:#80b8ff">Bolton, MWR (1980)</a></li>
+        <li>体感温度: Humidex H = T + 0.5555·(e/100 − 10) [hPa]<br>
+          → <a href="https://en.wikipedia.org/wiki/Humidex" target="_blank" style="color:#80b8ff">Masterton &amp; Richardson, Environment Canada (1979)</a></li>
+        <li>潜熱フラックス: Lewis関係 h_m ≈ h_c/(ρCp), q_lat=(h_c/Cp)·L·Δw<br>
+          → <a href="https://en.wikipedia.org/wiki/Lewis_number" target="_blank" style="color:#80b8ff">Lewis, Trans. AIChE (1922)</a> /
+          <a href="https://www.ashrae.org/technical-resources/ashrae-handbook" target="_blank" style="color:#80b8ff">ASHRAE Handbook of Fundamentals, Ch.9 Thermal Comfort</a></li>
+        <li>人体放射: ε≈0.95, q_rad=εσ(T_w⁴−T_s⁴)<br>
+          → <a href="https://doi.org/10.1088/0031-9155/18/5/307" target="_blank" style="color:#80b8ff">Steketee, Phys Med Biol (1973)</a></li>
+        <li>裸体対流伝達率 h_c≈3–8 W/m²K<br>
+          → <a href="https://www.cbe.berkeley.edu/research/other-papers/de%20Dear%20-%20convective%20and%20radiative%20heat%20transfer%20coefficients%20-%201997.pdf" target="_blank" style="color:#80b8ff">de Dear et al., Int J Biometeorology (1997)</a></li>
+        <li>水の蒸発潜熱 L=2260 kJ/kg、Cp_air=1005 J/kg·K<br>
+          → <a href="https://webbook.nist.gov/chemistry/fluid/" target="_blank" style="color:#80b8ff">NIST Chemistry WebBook</a></li>
+        <li>サウナの熱・湿度動態（参考）<br>
+          → <a href="https://doi.org/10.1016/S0002-9343(01)00671-9" target="_blank" style="color:#80b8ff">Hannuksela &amp; Ellahham, Am J Med (2001)</a></li>
+        <li>仮定: 0次元・瞬時混合・上下成層なし。蒸発潜熱はストーンが供給（空気から奪わない）。RH≥100%で過剰水は凝縮、壁温&lt;露点で結露警告。</li>
+      </ul>
+    </details>
+  </div>
+  </div><!-- /left-scroll -->
+
+  <div class="right-scroll">
+  <div class="panel">
+    <div class="kpis" id="kpis"></div>
+    <div class="termbar">
+      <span class="label">グラフの用語:</span>
+      <span class="term"><span class="swatch" style="background:#ff8040;"></span>対流 q_conv <span class="info-btn" data-key="qConv">?</span></span>
+      <span class="term"><span class="swatch" style="background:#ff4060;"></span>放射 q_rad <span class="info-btn" data-key="qRad">?</span></span>
+      <span class="term"><span class="swatch" style="background:#40b0ff;"></span>潜熱 q_lat <span class="info-btn" data-key="qLat">?</span></span>
+      <span class="term"><span class="swatch" style="background:#ff4080;"></span>体感 Humidex <span class="info-btn" data-key="humidex">?</span></span>
+    </div>
+    <div style="height:220px"><canvas id="chartQ"></canvas></div>
+    <div style="height:200px; margin-top:10px"><canvas id="chartT"></canvas></div>
+    <div style="height:200px; margin-top:10px"><canvas id="chartRH"></canvas></div>
+    <div class="note">※ 0次元集中定数モデル。上下成層は無視。CFD/実測でキャリブレーション係数を後付けする想定。</div>
+  </div>
+  </div><!-- /right-scroll -->
+</div><!-- /sim-wrap -->
+</div><!-- /pane-sim -->
+
+<!-- ===== タブ2: 計算ロジック ===== -->
+<div class="tab-pane" id="pane-logic">
+<div class="logic-wrap">
+<div class="flowwrap">
+  <div class="legend">
+    <span>記法:</span>
+    <span><code>∝X</code> 比例</span>
+    <span><code>∝1/X</code> 反比例</span>
+    <span><code>∝√X</code> 平方根</span>
+    <span><code>∝X^⅔</code> 2/3 乗</span>
+    <span><code>∝X⁴</code> 4乗</span>
+    <span><code>∝exp(X)</code> 指数</span>
+    <span><code>線形差</code> ΔX に比例</span>
+  </div>
+  <div class="flowcol">
+    <div class="panel">
+      <h2>図 A — 依存グラフ（何が何に効くか）</h2>
+      <div class="cap">
+        スライダー（橙）→ 派生量（灰）→ 出力（青）。エッジに依存の関数形を記載。
+        例: V を上げると <code>m_air ∝ V</code> で熱容量 <code>mCp</code> が大きくなり、
+        温度時定数 <code>τ_T = mCp/(K_v+K_w)</code> が増えて応答が鈍る。
+      </div>
+<pre class="mermaid">
+flowchart LR
+  classDef inp fill:#3a2a18,stroke:#ffb96b,color:#ffb96b,stroke-width:1.5px;
+  classDef der fill:#262626,stroke:#666,color:#ddd;
+  classDef out fill:#172838,stroke:#80b8ff,color:#80b8ff,stroke-width:1.5px;
+
+  V["V<br/>室容積"]:::inp
+  T0["T₀<br/>初期気温"]:::inp
+  RH0["RH₀"]:::inp
+  mw["m_w<br/>水量"]:::inp
+  tev["t_ev<br/>蒸発時間"]:::inp
+  Qh["Q_h<br/>ヒーター"]:::inp
+  ACH["ACH<br/>換気"]:::inp
+  Tw["T_w<br/>壁温"]:::inp
+  Ts["T_s<br/>肌温"]:::inp
+  vAir["v<br/>風速"]:::inp
+  hc["h_c<br/>対流係数<br/>(v 駆動 or 手動)"]:::der
+  Tr["T_r<br/>放射壁温"]:::inp
+
+  m_air["m_air<br/>= P·V/(R·T₀ₖ)"]:::der
+  evapRate["evapRate<br/>= m_w/t_ev"]:::der
+  Aw["A_wall<br/>= 6·V^⅔"]:::der
+  Kw["K_w = 10·A_wall"]:::der
+  Kv["K_v = (ACH/3600)·V·C_p"]:::der
+  mCp["mCp = m_air·C_p"]:::der
+  tau["τ_T = mCp/(K_v+K_w)<br/>温度応答の時定数"]:::der
+  Teq["T_eq<br/>= (Q_h+K_v·T_out+K_w·T_w)/(K_v+K_w)<br/>定常気温"]:::der
+  esat["e_sat(T_c)<br/>Tetens 指数式"]:::der
+  wsat["w_sat(T_c)<br/>飽和絶対湿度"]:::der
+  wskin["w_skin = w_sat(T_s)"]:::der
+
+  Tc(["T_c 気温"]):::out
+  w(["w 絶対湿度"]):::out
+  RH(["RH"]):::out
+  H(["Humidex<br/>体感温度"]):::out
+  qconv(["q_conv 対流"]):::out
+  qrad(["q_rad 放射"]):::out
+  qlat(["q_lat 潜熱"]):::out
+  qtot(["q_total"]):::out
+
+  V -->|"∝V"| m_air
+  T0 -->|"∝1/T₀ₖ"| m_air
+  V -->|"∝V^⅔"| Aw
+  Aw --> Kw
+  V -->|"∝V"| Kv
+  ACH -->|"∝ACH"| Kv
+  m_air --> mCp
+  mCp --> tau
+  Kv --> tau
+  Kw --> tau
+  Qh --> Teq
+  Kv --> Teq
+  Kw --> Teq
+  Tw -->|"線形"| Teq
+  tau --> Tc
+  Teq --> Tc
+
+  mw -->|"∝m_w"| evapRate
+  tev -->|"∝1/t_ev"| evapRate
+  evapRate -->|"投入 ∝1/V"| w
+  RH0 -->|"∝RH₀"| w
+  T0 -->|"∝exp(T₀)"| w
+  ACH -->|"希釈 ∝ACH"| w
+  Tc --> esat
+  esat -->|"∝exp(T_c)"| wsat
+  wsat -->|"上限制限"| w
+
+  Tc --> RH
+  w --> RH
+  esat --> RH
+  Tc -->|"線形"| H
+  w -->|"e_pa 経由"| H
+
+  vAir -->|"Mitchell ∝v^0.6"| hc
+  hc -->|"∝h_c"| qconv
+  Tc -->|"線形差"| qconv
+  Ts -->|"線形差"| qconv
+
+  Tr -->|"∝T_rₖ⁴"| qrad
+  Ts -->|"∝-T_sₖ⁴"| qrad
+
+  hc -->|"∝h_c"| qlat
+  w -->|"線形差"| qlat
+  Ts --> wskin
+  wskin -->|"-線形差"| qlat
+
+  qconv --> qtot
+  qrad --> qtot
+  qlat --> qtot
+</pre>
+    </div>
+
+    <div class="panel">
+      <h2>図 B — 1タイムステップの解き順（逐次）</h2>
+      <div class="cap">
+        dt = 0.5 s、t = 0〜300 s。各ステップで既知 (T_c, w) から新しい (T_c, w) を逐次更新。
+        温度更新は <b>半陰解法</b>（分母に <code>1+dt·(K_v+K_w)/mCp</code>）で大きい dt でも安定。
+        蒸発潜熱はストーンが供給する前提で、空気からは奪わない（凝縮分のみ空気に戻る）。
+      </div>
+<pre class="mermaid">
+flowchart TD
+  classDef step fill:#262626,stroke:#888,color:#ddd,text-align:left;
+  classDef io fill:#3a2a18,stroke:#ffb96b,color:#ffb96b;
+
+  S0["t = i·dt<br/>既知: T_c, w"]:::io
+  S1["① 蒸発で水蒸気投入<br/>dm = (t&lt;t_ev) ? evapRate·dt : 0<br/>w' = w + dm/m_air"]:::step
+  S2["② 飽和制限・凝縮<br/>w_sat = w_sat(T_c) ← Tetens<br/>if w' &gt; w_sat:<br/>&nbsp;&nbsp;condensed = (w'−w_sat)·m_air<br/>&nbsp;&nbsp;w' = w_sat"]:::step
+  S3["③ 温度更新（半陰解法）<br/>Q_in = Q_h + condensed·L/dt<br/>T_c ← (T_c + dt·(Q_in + K_v·T_out + K_w·T_w)/mCp)<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; / (1 + dt·(K_v + K_w)/mCp)"]:::step
+  S4["④ 換気で湿度希釈<br/>w ← w' − ach·(w' − w_out)·dt<br/>（陽解法・1次オイラー）"]:::step
+  S5["⑤ 湿度状態量<br/>e_pa = w·P/(0.622 + w)<br/>RH = 100·e_pa/e_sat(T_c)<br/>Humidex = T_c + 0.5555·(e_pa/100 − 10)"]:::step
+  S6["⑥ 肌側熱流束<br/>q_conv = h_c·(T_c − T_s)　【線形】<br/>q_rad = εσ(T_rₖ⁴ − T_sₖ⁴)　【4乗】<br/>q_lat = (h_c/C_p)·L·(w − w_skin_sat)　【線形差】"]:::step
+  S7["i ← i+1<br/>次ステップへ"]:::io
+
+  S0 --> S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7
+  S7 -.->|"i &lt; N"| S0
+</pre>
+      <div class="cap" style="margin-top:8px">
+        <b>読み方のコツ:</b>
+        <br>• <b>応答の速さ</b>を知りたい → 図 A の <code>τ_T</code> 経路（V↑ で鈍く、ACH↑/壁面積↑ で速い）
+        <br>• <b>到達温度</b>を知りたい → 図 A の <code>T_eq</code> 経路（Q_h↑ で上、ACH↑ で下に引っ張る）
+        <br>• <b>RH ピーク</b>のタイミング → ② で水蒸気が増え、③ で T_c が上がると e_sat が指数で増えて RH は下がる ⇒ 投入直後にピーク
+        <br>• <b>放射の効き方</b>は <code>T_r⁴</code> で非常に強い。T_s=35℃ 基準で T_r を 90→120℃ にすると q_rad は約 <code>(393⁴−308⁴)/(363⁴−308⁴) ≈ 1.78</code> 倍に跳ねる
+      </div>
+    </div>
+  </div>
+</div><!-- /flowwrap -->
+</div><!-- /logic-wrap -->
+</div><!-- /pane-logic -->
+
+</div><!-- /tab-panels -->
+
+<script>
+// ── タブ切り替え ──
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('pane-' + btn.dataset.tab).classList.add('active');
+  });
+});
+</script>
+
+<script>
+const $ = id => document.getElementById(id);
+const ids = ['V','T0','RH0','mw','tev','Qh','ACH','Tw','Ts','vAir','hc','Tr'];
+const labelMap = {V:'vVal',T0:'t0Val',RH0:'rh0Val',mw:'mwVal',tev:'tevVal',Qh:'qhVal',ACH:'achVal',Tw:'twVal',Ts:'tsVal',vAir:'vAirVal',hc:'hcVal',Tr:'trVal'};
+
+// Mitchell (1974) 人体強制対流: h_c ≈ max(3.1, 8.3·v^0.6) [W/m²K]
+const hcFromWind = v => Math.max(3.1, 8.3 * Math.pow(Math.max(v, 0.0001), 0.6));
+
+// 飽和蒸気圧 [Pa]
+const eSat = T => 611.2 * Math.exp(17.67*T/(T+243.5));
+// 露点 [°C] from vapor pressure [Pa]
+const dewPoint = e => {
+  const ln = Math.log(Math.max(e,1)/611.2);
+  return 243.5*ln/(17.67-ln);
+};
+// 絶対湿度 [kg/kg dry air] from T,RH,P
+// 注意: T≥100°C では eSat≥P_atm となり飽和の概念が破綻（沸騰域）。
+// その場合は実質「無制限」として扱い、凝縮ロジックが暴走しないようにする。
+const absHum = (T, RH, P=101325) => {
+  const e = Math.min(RH/100 * eSat(T), P * 0.999);
+  if (eSat(T) >= P * 0.999) return 10; // 沸騰域: 飽和なし扱い (>>通常w)
+  return 0.622 * e / (P - e);
+};
+// Humidex
+const humidex = (T, e_pa) => T + 0.5555*(e_pa/100 - 10);
+
+function simulate(p) {
+  const dt = 0.5; // s
+  const tEnd = 300; // s (5 min)
+  const N = Math.floor(tEnd/dt)+1;
+  const t = [], T = [], RH = [], TH = [], W = [];
+  const Qconv = [], Qrad = [], Qlat = [], Qtot = [];
+
+  // 空気質量 (理想気体)
+  const Pa = 101325;
+  const R_air = 287;
+  let Tk = p.T0 + 273.15;
+  const m_air = Pa * p.V / (R_air * Tk);
+  const Cp = 1005;
+
+  // 初期絶対湿度
+  let w = absHum(p.T0, p.RH0);
+  let Tc = p.T0;
+  const m_water_total = p.mw / 1000; // kg (1 ml ≈ 1 g)
+  const evapRate = m_water_total / p.tev; // kg/s
+  const L = 2.26e6; // J/kg
+  const Cp_vap = 1860;
+
+  // 換気: 外気 25°C, RH 50% と仮定
+  const T_out = 25, RH_out = 50;
+  const w_out = absHum(T_out, RH_out);
+  const ach_per_s = p.ACH / 3600;
+
+  for (let i=0; i<N; i++) {
+    const tt = i*dt;
+    // 蒸発による水蒸気投入
+    const dm = (tt < p.tev) ? evapRate*dt : 0;
+    // 飽和制限
+    const w_sat = absHum(Tc, 100);
+    let w_new = w + dm/m_air;
+    let condensed = 0;
+    if (w_new > w_sat) { condensed = (w_new - w_sat)*m_air; w_new = w_sat; }
+    // 半陰解法で安定化:
+    //   m·Cp·dT/dt = Q_in - K_v·(T-T_out) - K_w·(T-T_w)
+    //   T_new = (T + dt·(Q_in/(mCp) + (K_v·T_out + K_w·T_w)/(mCp))) / (1 + dt·(K_v+K_w)/(mCp))
+    // 蒸発潜熱はストーンが供給する前提（空気から奪わない）。凝縮分のみ空気に戻る。
+    const dQ_evap_rate = condensed * L / dt; // W
+    const Q_heat = p.Qh*1000;                 // W
+    const A_wall = 6 * Math.pow(p.V, 2/3);
+    const K_w = 10 * A_wall;                  // W/K
+    const K_v = ach_per_s * p.V * 1.0 * Cp;   // W/K
+    const Q_in = Q_heat + dQ_evap_rate;
+    const mCp = m_air * Cp;
+    Tc = (Tc + dt*(Q_in + K_v*T_out + K_w*p.Tw)/mCp) / (1 + dt*(K_v + K_w)/mCp);
+
+    // 換気で湿度希釈
+    w_new += -ach_per_s * (w_new - w_out) * dt;
+    w = w_new;
+
+    const e_pa = w*Pa / (0.622 + w);
+    const rh = 100 * e_pa / eSat(Tc);
+    const h = humidex(Tc, e_pa);
+
+    // --- 肌側熱流束 [W/m²] ---
+    const sigma = 5.67e-8, eps = 0.95;
+    const Ts_K = p.Ts + 273.15, Tr_K = p.Tr + 273.15;
+    const q_conv = p.hc * (Tc - p.Ts);
+    const q_rad = eps * sigma * (Math.pow(Tr_K,4) - Math.pow(Ts_K,4));
+    // Lewis関係: h_m ≈ h_c/(ρ·Cp); q_lat = h_m·ρ·L·Δw = (h_c/Cp)·L·Δw
+    const w_skin_sat = absHum(p.Ts, 100);
+    const q_lat = (p.hc / Cp) * L * (w - w_skin_sat);
+    const q_tot = q_conv + q_rad + q_lat;
+
+    if (i % 2 === 0) {
+      t.push(tt);
+      T.push(Tc);
+      RH.push(Math.min(rh, 105));
+      TH.push(h);
+      W.push(w*1000);
+      Qconv.push(q_conv);
+      Qrad.push(q_rad);
+      Qlat.push(q_lat);
+      Qtot.push(q_tot);
+    }
+  }
+
+  // KPI: peak humidex, peak RH, time-to-peak, dew point check
+  const peakH = Math.max(...TH);
+  const peakRH = Math.max(...RH);
+  const tPeakH = t[TH.indexOf(peakH)];
+  const e_peak = (Math.max(...W)/1000)*Pa / (0.622 + Math.max(...W)/1000);
+  const Td = dewPoint(e_peak);
+  const condensRisk = Td > p.Tw;
+
+  const peakQ = Math.max(...Qtot);
+  const tPeakQ = t[Qtot.indexOf(peakQ)];
+  const latMax = Math.max(...Qlat);  // 凝縮側ピーク（最大の+）
+  const latMin = Math.min(...Qlat);  // 蒸発側ピーク（最大の−）
+  // 絶対値が大きい方を「潜熱寄与」として返す
+  const peakLat = Math.abs(latMax) >= Math.abs(latMin) ? latMax : latMin;
+  return {t, T, RH, TH, W, Qconv, Qrad, Qlat, Qtot, peakH, peakRH, tPeakH, Td, condensRisk, peakQ, tPeakQ, peakLat, latMax, latMin};
+}
+
+let chartT, chartRH, chartQ;
+function initCharts() {
+  const common = {
+    type: 'line',
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { labels: { color: '#ccc', font:{size:11} } } },
+      scales: {
+        x: { ticks:{color:'#999'}, grid:{color:'#333'}, title:{display:true,text:'時間 [s]',color:'#999'} },
+        y: { ticks:{color:'#999'}, grid:{color:'#333'} }
+      }
+    }
+  };
+  chartQ = new Chart($('chartQ'), {...common, data:{datasets:[
+    {label:'対流 q_conv', data:[], borderColor:'#ff8040', backgroundColor:'rgba(255,128,64,0.45)', fill:'origin', tension:0.2, pointRadius:0, stack:'a'},
+    {label:'放射 q_rad', data:[], borderColor:'#ff4060', backgroundColor:'rgba(255,64,96,0.45)', fill:'-1', tension:0.2, pointRadius:0, stack:'a'},
+    {label:'潜熱 q_lat', data:[], borderColor:'#40b0ff', backgroundColor:'rgba(64,176,255,0.45)', fill:'-1', tension:0.2, pointRadius:0, stack:'a'},
+    {label:'合計 q_total', data:[], borderColor:'#ffffff', backgroundColor:'transparent', tension:0.2, pointRadius:0, borderWidth:2},
+  ]}, options:{...common.options, scales:{
+    x: common.options.scales.x,
+    y: { stacked:true, ticks:{color:'#999'}, grid:{color:'#333'}, title:{display:true,text:'肌側熱流束 [W/m²]',color:'#999'} }
+  }}});
+
+  chartT = new Chart($('chartT'), {...common, data:{datasets:[
+    {label:'気温 T [°C]', data:[], borderColor:'#ff8040', backgroundColor:'transparent', tension:0.2, pointRadius:0},
+    {label:'体感温度 (Humidex) [°C]', data:[], borderColor:'#ff4080', backgroundColor:'transparent', tension:0.2, pointRadius:0, borderDash:[6,3]},
+  ]}, options:{...common.options, scales:{...common.options.scales, y:{...common.options.scales.y, title:{display:true,text:'温度 [°C]',color:'#999'}}}}});
+  chartRH = new Chart($('chartRH'), {...common, data:{datasets:[
+    {label:'相対湿度 RH [%]', data:[], borderColor:'#40b0ff', backgroundColor:'transparent', tension:0.2, pointRadius:0, yAxisID:'y'},
+    {label:'絶対湿度 [g/kg]', data:[], borderColor:'#80ffc0', backgroundColor:'transparent', tension:0.2, pointRadius:0, yAxisID:'y2'},
+  ]}, options:{...common.options, scales:{
+    x: common.options.scales.x,
+    y: { ticks:{color:'#40b0ff'}, grid:{color:'#333'}, title:{display:true,text:'RH [%]',color:'#40b0ff'}, min:0, max:105 },
+    y2:{ position:'right', ticks:{color:'#80ffc0'}, grid:{drawOnChartArea:false}, title:{display:true,text:'絶対湿度 [g/kg]',color:'#80ffc0'} }
+  }}});
+}
+
+function fmtKPI(label, val, unit, cls='') {
+  return `<div class="kpi ${cls}"><div class="lbl">${label}</div><div class="num">${val}<span class="unit">${unit}</span></div></div>`;
+}
+
+function update() {
+  // v_air → h_c 連動 (チェック ON のときのみ h_c スライダーを上書き)
+  const vAir = +$('vAir').value;
+  const hcCalc = hcFromWind(vAir);
+  $('hcFromV').textContent = hcCalc.toFixed(1);
+  const linked = $('vDrivesHc').checked;
+  const hcInput = $('hc');
+  if (linked) {
+    hcInput.value = hcCalc.toFixed(1);
+    hcInput.disabled = true;
+    hcInput.style.opacity = 0.5;
+  } else {
+    hcInput.disabled = false;
+    hcInput.style.opacity = 1;
+  }
+
+  const p = {
+    V: +$('V').value, T0: +$('T0').value, RH0: +$('RH0').value,
+    mw: +$('mw').value, tev: +$('tev').value, Qh: +$('Qh').value,
+    ACH: +$('ACH').value, Tw: +$('Tw').value,
+    Ts: +$('Ts').value, hc: +$('hc').value, Tr: +$('Tr').value,
+    vAir: vAir,
+  };
+  ids.forEach(id => $(labelMap[id]).textContent = $(id).value);
+
+  const r = simulate(p);
+  chartQ.data.labels = r.t;
+  chartQ.data.datasets[0].data = r.Qconv.map(v=>v.toFixed(1));
+  chartQ.data.datasets[1].data = r.Qrad.map(v=>v.toFixed(1));
+  chartQ.data.datasets[2].data = r.Qlat.map(v=>v.toFixed(1));
+  chartQ.data.datasets[3].data = r.Qtot.map(v=>v.toFixed(1));
+  chartQ.update('none');
+  chartT.data.labels = r.t;
+  chartT.data.datasets[0].data = r.T.map(v=>v.toFixed(2));
+  chartT.data.datasets[1].data = r.TH.map(v=>v.toFixed(2));
+  chartT.update('none');
+  chartRH.data.labels = r.t;
+  chartRH.data.datasets[0].data = r.RH.map(v=>v.toFixed(1));
+  chartRH.data.datasets[1].data = r.W.map(v=>v.toFixed(2));
+  chartRH.update('none');
+
+  const initH = humidex(p.T0, p.RH0/100*eSat(p.T0));
+  const dH = r.peakH - initH;
+  const cls = r.condensRisk ? 'warn' : (dH > 5 ? 'ok' : '');
+
+  const qcls = r.peakQ > 1500 ? 'warn' : (r.peakQ > 800 ? 'ok' : '');
+  // 潜熱の支配モード: 凝縮(加熱)/蒸発(冷却)
+  const latLabel = r.latMax > Math.abs(r.latMin)
+    ? `潜熱：凝縮加熱`
+    : `潜熱：汗蒸発冷却`;
+  const latVal = r.latMax > Math.abs(r.latMin) ? r.latMax : r.latMin;
+  const latCls = latVal > 500 ? 'warn' : (latVal < -100 ? 'ok' : '');
+  $('kpis').innerHTML =
+    fmtKPI('熱流束ピーク q_total', r.peakQ.toFixed(0), 'W/m²', qcls) +
+    fmtKPI(latLabel, (latVal>=0?'+':'') + latVal.toFixed(0), 'W/m²', latCls) +
+    fmtKPI('熱流束ピーク時刻', r.tPeakQ.toFixed(0), 's') +
+    fmtKPI('RHピーク', r.peakRH.toFixed(0), '%', r.peakRH>=100?'warn':'') +
+    fmtKPI('露点温度', r.Td.toFixed(1), '°C', r.condensRisk?'warn':'') +
+    fmtKPI('体感(Humidex)', r.peakH.toFixed(0), '°C');
+}
+
+ids.forEach(id => $(id).addEventListener('input', update));
+$('vDrivesHc').addEventListener('change', update);
+initCharts();
+update();
+
+// === スライダー→q_total ピークの感度メタデータ ===
+const SENS = {
+  V: {
+    title: '室容積 V → q_total ピーク',
+    summary: 'q_lat ピークは V に <b>反比例</b>。空気質量 <code>m_air ∝ V</code> のため、同じ水量でも Δw ∝ 1/V で希釈される。',
+    tex: 'q_{\\mathrm{lat}}^{\\mathrm{peak}} \\approx \\frac{h_c L}{C_p}\\cdot\\frac{m_w}{m_{\\mathrm{air}}} = \\frac{h_c L R T_{0,K}}{C_p P}\\cdot\\frac{m_w}{V} \\;\\propto\\; \\frac{1}{V}',
+    notes: '対流・放射への直接効果はなし。時定数 <code>τ_T = mCp/(K_v+K_w)</code> 経由で応答が鈍る（V↑ で立ち上がりが遅い）。'
+  },
+  T0: {
+    title: '初期気温 T₀ → q_total ピーク',
+    summary: 'q_conv は <b>線形</b>、q_lat は <b>指数</b>（飽和上限 e_sat(T) が Tetens 指数で増えるため凝縮クリップが緩む）。',
+    tex: 'q_{\\mathrm{conv}} \\propto (T_c - T_s),\\qquad w_{\\mathrm{sat}}(T_c) \\propto \\exp\\!\\left(\\tfrac{17.67\\,T_c}{T_c+243.5}\\right)',
+    notes: '高温側ほど湿度ピークが伸び、q_lat が支配的に。T₀≈100℃ 以上では沸騰扱いで飽和制限が外れる。'
+  },
+  RH0: {
+    title: '初期湿度 RH₀ → q_total ピーク',
+    summary: '初期 w₀ に <b>線形</b>に上乗せ。ロウリュ後の w ピークも同じ分だけ底上げされる。',
+    tex: 'w_0 \\;=\\; 0.622\\cdot\\frac{(RH_0/100)\\,e_s(T_0)}{P-(RH_0/100)\\,e_s(T_0)} \\;\\propto\\; RH_0',
+    notes: '上限 w_sat に近い場合は飽和クリップで頭打ちになる。'
+  },
+  mw: {
+    title: 'ロウリュ水量 m_w → q_total ピーク',
+    summary: 'q_lat に <b>線形</b>に効く。ただし飽和到達で頭打ち、超過分は凝縮熱として q_conv へ回る。',
+    tex: '\\Delta w_{\\mathrm{peak}} = \\min\\!\\left(\\tfrac{m_w}{m_{\\mathrm{air}}},\\; w_{\\mathrm{sat}}(T_c)-w\\right),\\quad q_{\\mathrm{lat}} \\propto m_w',
+    notes: '飽和超過分: <code>Q_in += condensed·L/dt</code> として T_c を底上げ。'
+  },
+  tev: {
+    title: '蒸発時間 t_ev → q_total ピーク',
+    summary: '短いほど瞬間 evapRate が大きく、ピーク w が高い。換気時定数より十分短い領域では <b>ほぼ無依存</b>。',
+    tex: '\\dot m_{\\mathrm{evap}} = \\frac{m_w}{t_{\\mathrm{ev}}},\\quad w_{\\mathrm{peak}} \\;\\approx\\; \\frac{m_w/m_{\\mathrm{air}}}{1+\\mathrm{ACH}\\cdot t_{\\mathrm{ev}}/(2\\cdot 3600)}',
+    notes: 'ACH·t_ev が小さい領域はほぼ一定、大きいと <code>q_lat ∝ 1/t_ev</code> で減衰する。'
+  },
+  Qh: {
+    title: 'ヒーター出力 Q_h → q_total ピーク',
+    summary: 'T_c に <b>線形</b>に効くので q_conv も線形。q_lat へは e_sat(T_c) を介して指数で間接寄与。',
+    tex: 'T_{\\mathrm{eq}} = \\frac{Q_h + K_v T_{\\mathrm{out}} + K_w T_w}{K_v+K_w},\\quad q_{\\mathrm{conv}} \\propto T_{\\mathrm{eq}}-T_s',
+    notes: 'q_rad は T_r で別パラメータ化されているので直接の効果はゼロ。'
+  },
+  ACH: {
+    title: '換気 ACH → q_total ピーク',
+    summary: 'w と T_c の両方を希釈。q_lat・q_conv 双方を下げる。およそ <code>1/(1+定数·ACH)</code> 型。',
+    tex: 'w_{\\mathrm{peak}} \\propto \\frac{1}{1+\\mathrm{ACH}\\cdot t_{\\mathrm{ev}}/(2\\cdot 3600)},\\quad T_{\\mathrm{eq}} \\propto \\frac{Q_h+K_w T_w}{K_v(\\mathrm{ACH})+K_w}',
+    notes: 'ACH=0 で完全密閉（簡易版では空気側熱損失ゼロ）。ACH→∞ で T_out, w_out に張り付く。'
+  },
+  Tw: {
+    title: '壁温 T_w → q_total ピーク',
+    summary: 'T_eq に <b>線形</b>で加算 → q_conv が線形に増える。q_rad は T_r が別なので無関係。',
+    tex: 'T_{\\mathrm{eq}} = \\frac{Q_h + K_v T_{\\mathrm{out}} + K_w T_w}{K_v+K_w} \\;\\propto\\; T_w',
+    notes: 'T_d > T_w なら壁面結露（このスライダーは結露判定のしきい値も兼ねる）。'
+  },
+  Ts: {
+    title: '肌温度 T_s → q_total ピーク',
+    summary: '3項すべてに <b>負の寄与</b>。放射が <b>4 乗</b>、潜熱が <b>指数</b>、対流が <b>線形</b>。',
+    tex: 'q_{\\mathrm{conv}} \\propto -T_s,\\quad q_{\\mathrm{rad}} \\propto -T_{s,K}^{4},\\quad q_{\\mathrm{lat}} \\propto -e_s(T_s)\\propto -\\exp\\!\\left(\\tfrac{17.67\\,T_s}{T_s+243.5}\\right)',
+    notes: '発汗で T_s が下がる ⇒ 3項とも増加 ⇒ より厳しい環境になる。'
+  },
+  vAir: {
+    title: '風速 v → q_total ピーク',
+    summary: '風速 v が直接効くのは <b>h_c だけ</b>。Mitchell (1974) の人体強制対流相関で <code>h_c ∝ v^0.6</code>。q_conv と q_lat が同時に <b>v^0.6</b> で増え、q_rad は不変。室温・湿度は 0D 仮定では変わらない。',
+    tex: 'h_c(v) = \\max(3.1,\\; 8.3\\,v^{0.6}) \\;\\;\\Rightarrow\\;\\; q_{\\mathrm{conv}},\\,q_{\\mathrm{lat}} \\;\\propto\\; v^{0.6}',
+    notes: '物理的にやること: ①皮膚境界層が薄くなる（強制対流）/ ②Lewis 関係 <code>h_m = h_c/(ρCp)</code> で潜熱も同じだけ増える / ③放射・室空気状態は不変。<br>v=0.1 ≈ 静止, v=1 ≈ 軽い扇ぎ, v=3 ≈ 通常 Aufguss, v=5 ≈ 強 Aufguss。'
+  },
+  hc: {
+    title: '対流伝達率 h_c → q_total ピーク',
+    summary: 'q_conv と q_lat を <b>線形</b>にスケール。q_rad には効かない（Lewis 関係で対流と潜熱は連動）。',
+    tex: 'q_{\\mathrm{conv}} = h_c(T_c-T_s),\\quad q_{\\mathrm{lat}} = \\frac{h_c}{C_p}\\,L\\,(w-w_{\\mathrm{skin,sat}})',
+    notes: '通常は風速 v から自動計算（Mitchell <code>h_c = max(3.1, 8.3·v^0.6)</code>）。直接いじりたい場合はチェックを外す。h_m = h_c/(ρ C_p) を仮定（Lewis 数 ≈ 1）。'
+  },
+  Tr: {
+    title: '放射壁温 T_r → q_total ピーク',
+    summary: 'q_rad のみに効くが <b>絶対温度の 4 乗</b>なので極めて強い。',
+    tex: 'q_{\\mathrm{rad}} = \\varepsilon\\sigma\\!\\left(T_{r,K}^{4} - T_{s,K}^{4}\\right) \\;\\propto\\; T_{r,K}^4',
+    notes: '例: T_s=35℃, T_r を 90→120℃ にすると <code>(393⁴−308⁴)/(363⁴−308⁴) ≈ 1.78</code> 倍。電気ヒーター直視時はさらに大きい。'
+  },
+  qConv: {
+    title: '対流熱流束 q_conv とは',
+    summary: '<b>周囲の空気が肌に触れて熱を渡す</b>分。空気→肌の温度差で線形に効く。気温 T_c が肌温 T_s より高ければプラス（加熱）。',
+    tex: 'q_{\\mathrm{conv}} = h_c\\,(T_c - T_s)\\quad [\\mathrm{W/m^2}]',
+    notes: '風 v↑ で h_c↑ ⇒ q_conv 線形増。ΔT が同じでも風がある方が体感は強い（Aufguss の本質）。空気と肌の <b>境界層</b>が薄くなるほど h_c が上がる。'
+  },
+  qRad: {
+    title: '放射熱流束 q_rad とは',
+    summary: '<b>壁・ストーン・天井から赤外線として直接皮膚に届く熱</b>。空気を介さないので風と無関係。電気ヒーターやストーンが見える位置で支配的。',
+    tex: 'q_{\\mathrm{rad}} = \\varepsilon\\sigma\\!\\left(T_{r,K}^{4} - T_{s,K}^{4}\\right),\\quad \\varepsilon\\approx 0.95,\\ \\sigma=5.67\\times 10^{-8}',
+    notes: '絶対温度 (K) の <b>4 乗差</b>なので非線形に強い。ε≈0.95 は人体皮膚の値（Steketee 1973）。サウナでは q_conv と並んで主成分。'
+  },
+  qLat: {
+    title: '潜熱熱流束 q_lat とは',
+    summary: '<b>水蒸気の出入りに伴う熱</b>。肌で凝縮するか、汗が蒸発するか。Lewis 関係で h_c に比例。',
+    tex: 'q_{\\mathrm{lat}} = \\frac{h_c}{C_p}\\,L\\,(w - w_{\\mathrm{skin,sat}})',
+    notes: '<b>w &gt; w_skin,sat</b>（ロウリュ直後の高湿）⇒ 肌に凝縮、<b>プラス＝加熱</b>。これが「熱波」の正体。<br><b>w &lt; w_skin,sat</b>（通常サウナ）⇒ 汗が蒸発、<b>マイナス＝冷却</b>。これが体温調節の主役。<br>本電卓では w_skin,sat は <code>T_s</code> での飽和湿度。'
+  },
+  humidex: {
+    title: '体感温度 Humidex とは',
+    summary: '気温 T と<b>水蒸気分圧 e</b> から計算する「人が感じる温度」の指標。湿度が高いと汗が蒸発しにくく、肌から熱が逃げない → 気温より高く感じる。',
+    tex: 'H = T + 0.5555\\!\\left(\\frac{e}{100}-10\\right),\\quad e\\,[\\mathrm{hPa}]',
+    notes: 'ロウリュ時は T_c の上昇は微々たるものでも、<b>e（水蒸気分圧）が急増</b>するので H は跳ね上がる。これが「熱波」の数値表現。<br>出典: Masterton &amp; Richardson (1979, カナダ環境省)。元々は屋外/低温域向けで、サウナ域 80℃+ では外挿。<b>傾向把握用</b>であって絶対値は参考程度。'
+  }
+};
+
+// === 各スライダーに「?」ボタンを追加 ===
+ids.forEach(id => {
+  const ctrl = $(id).closest('.control');
+  if (!ctrl) return;
+  const label = ctrl.querySelector('label');
+  if (!label || !SENS[id]) return;
+  const btn = document.createElement('span');
+  btn.className = 'info-btn';
+  btn.textContent = '?';
+  btn.dataset.key = id;
+  btn.title = SENS[id].title;
+  const val = label.querySelector('.val');
+  if (val) label.insertBefore(btn, val); else label.appendChild(btn);
+});
+
+// === ポップオーバー ===
+const pop = $('popover');
+function showPop(key, anchor) {
+  const s = SENS[key];
+  if (!s) return;
+  $('popTitle').textContent = s.title;
+  $('popSummary').innerHTML = s.summary;
+  $('popNotes').innerHTML = s.notes;
+  const fEl = $('popFormula');
+  fEl.innerHTML = '';
+  if (window.katex) {
+    katex.render(s.tex, fEl, { displayMode: true, throwOnError: false });
+  } else {
+    fEl.textContent = s.tex;
+  }
+  pop.classList.add('show');
+  // anchor 付近に配置
+  const r = anchor.getBoundingClientRect();
+  const popW = 420;
+  const viewW = window.innerWidth;
+  let left = r.right + 12;
+  if (left + popW > viewW - 16) left = Math.max(16, r.left - popW - 12);
+  pop.style.left = left + 'px';
+  pop.style.top = Math.max(16, r.top - 8) + 'px';
+}
+function hidePop() { pop.classList.remove('show'); }
+document.addEventListener('click', e => {
+  const btn = e.target.closest('.info-btn');
+  if (btn) { showPop(btn.dataset.key, btn); e.stopPropagation(); return; }
+  if (!e.target.closest('.popover')) hidePop();
+});
+$('popClose').addEventListener('click', hidePop);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') hidePop(); });
+
+// Mermaid (dark theme)
+mermaid.initialize({
+  startOnLoad: true,
+  theme: 'dark',
+  themeVariables: {
+    fontSize: '12px',
+    lineColor: '#888',
+    primaryColor: '#262626',
+    primaryTextColor: '#ddd',
+    primaryBorderColor: '#666',
+  },
+  flowchart: { curve: 'basis', padding: 8 }
+});
+</script>
+</body>
+</html>
