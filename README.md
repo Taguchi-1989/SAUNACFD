@@ -1,6 +1,6 @@
 # SaunaFlow
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776ab.svg)](https://python.org)
 [![OpenFOAM](https://img.shields.io/badge/OpenFOAM-v2312-c00?logo=openfoam)](https://openfoam.org)
 [![Stars](https://img.shields.io/github/stars/Taguchi-1989/SAUNAFEM?style=flat&logo=github)](https://github.com/Taguchi-1989/SAUNAFEM)
@@ -211,4 +211,4 @@ Issueで質問・提案を歓迎します。サウナ設計、建築熱環境、
 
 ---
 
-*MIT License*
+*Apache License 2.0 — Copyright 2026 Taguchi*
