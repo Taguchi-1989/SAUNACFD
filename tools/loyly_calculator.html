@@ -8,9 +8,27 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
 <style>
-  body { font-family: -apple-system, "Segoe UI", "Hiragino Sans", sans-serif; margin: 0; padding: 16px; background: #1a1a1a; color: #e8e8e8; }
-  h1 { font-size: 18px; margin: 0 0 12px; color: #ffb96b; }
-  .layout { display: grid; grid-template-columns: 320px 1fr; gap: 20px; }
+  html, body { height: 100%; margin: 0; overflow: hidden; font-family: -apple-system, "Segoe UI", "Hiragino Sans", sans-serif; background: #1a1a1a; color: #e8e8e8; }
+  /* ── ヘッダー ── */
+  .hdr { padding: 10px 16px 0; flex-shrink: 0; }
+  h1 { font-size: 17px; margin: 0 0 2px; color: #ffb96b; }
+  .sub { font-size: 11px; color: #888; margin-bottom: 8px; }
+  /* ── タブ ── */
+  .tabs { display: flex; gap: 0; padding: 0 16px; border-bottom: 1px solid #333; flex-shrink: 0; }
+  .tab-btn { padding: 7px 18px; background: none; border: none; border-bottom: 2px solid transparent; color: #999; cursor: pointer; font-size: 13px; margin-bottom: -1px; transition: color .15s; }
+  .tab-btn:hover { color: #ccc; }
+  .tab-btn.active { color: #ffb96b; border-bottom-color: #ffb96b; }
+  /* ── タブパネル ── */
+  .tab-panels { flex: 1; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+  .tab-pane { display: none; }
+  .tab-pane.active { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+  /* ── シミュレータ ── */
+  .sim-wrap { display: grid; grid-template-columns: 320px 1fr; gap: 16px; padding: 14px 16px; flex: 1; overflow: hidden; box-sizing: border-box; min-height: 0; }
+  .left-scroll { overflow-y: auto; min-height: 0; padding-right: 4px; }
+  .right-scroll { overflow-y: auto; min-height: 0; }
+  /* ── 計算ロジックタブ ── */
+  .logic-wrap { flex: 1; overflow-y: auto; padding: 14px 16px; box-sizing: border-box; min-height: 0; }
+  /* ── パネル共通 ── */
   .panel { background: #242424; border: 1px solid #333; border-radius: 6px; padding: 14px; }
   .control { margin-bottom: 14px; }
   .control label { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; color: #ccc; }
@@ -28,14 +46,15 @@
   .note { font-size: 10px; color: #888; margin-top: 8px; line-height: 1.4; }
   details { margin-top: 12px; font-size: 11px; color: #aaa; }
   summary { cursor: pointer; color: #ffb96b; }
-  .flowwrap { margin-top: 20px; }
+  /* ── ロジックタブ内 ── */
   .flowwrap h2 { font-size: 14px; color: #ffb96b; margin: 0 0 8px; }
   .flowwrap .cap { font-size: 11px; color: #888; margin: 4px 0 10px; line-height: 1.5; }
   .flowcol { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
   .mermaid { background: #1e1e1e; border-radius: 4px; padding: 10px; overflow-x: auto; }
-  .legend { font-size: 10px; color: #aaa; display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 6px; }
+  .legend { font-size: 10px; color: #aaa; display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 10px; }
   .legend code { background:#333; padding:1px 5px; border-radius:3px; color:#ffb96b; }
   @media (max-width: 1100px) { .flowcol { grid-template-columns: 1fr; } }
+  /* ── ポップオーバー ── */
   .info-btn { display:inline-block; width:14px; height:14px; border-radius:50%; background:#444; color:#ffb96b; font-size:10px; text-align:center; line-height:14px; cursor:pointer; margin-left:4px; font-weight:700; user-select:none; }
   .info-btn:hover { background:#ffb96b; color:#1a1a1a; }
   .popover { position:fixed; max-width:420px; background:#2a2a2a; border:1.5px solid #ffb96b; border-radius:6px; padding:14px 16px; z-index:1000; display:none; font-size:12px; line-height:1.6; box-shadow:0 8px 24px rgba(0,0,0,0.6); color:#e8e8e8; }
@@ -52,7 +71,7 @@
   .termbar .swatch { width:10px; height:10px; border-radius:2px; display:inline-block; }
 </style>
 </head>
-<body>
+<body style="display:flex; flex-direction:column;">
 <div class="popover" id="popover">
   <span class="close" id="popClose">&times;</span>
   <h3 id="popTitle"></h3>
@@ -60,9 +79,21 @@
   <div class="formula" id="popFormula"></div>
   <div class="notes" id="popNotes"></div>
 </div>
-<h1>SaunaFlow — ロウリュ体感温度シミュレータ (0次元・室内平均)</h1>
-<div style="font-size:11px; color:#888; margin:-6px 0 14px;">作成日: 2026-05-14 ／ 作者: <span style="color:#ffb96b; font-weight:600;">ZEAL-BOOT-CAMP</span></div>
-<div class="layout">
+
+<div class="hdr">
+  <h1>SaunaFlow — ロウリュ体感温度シミュレータ (0次元・室内平均)</h1>
+  <div class="sub">作成日: 2026-05-14 ／ 作者: <span style="color:#ffb96b; font-weight:600;">ZEAL-BOOT-CAMP</span></div>
+</div>
+<div class="tabs">
+  <button class="tab-btn active" data-tab="sim">シミュレータ</button>
+  <button class="tab-btn" data-tab="logic">計算ロジック</button>
+</div>
+<div class="tab-panels">
+
+<!-- ===== タブ1: シミュレータ ===== -->
+<div class="tab-pane active" id="pane-sim">
+<div class="sim-wrap">
+  <div class="left-scroll">
   <div class="panel">
     <div class="control">
       <label>室容積 V <span style="color:#888;font-size:10px">(目安: 6–10)</span> <span class="val"><span id="vVal">8</span> m³</span></label>
@@ -141,7 +172,9 @@
       </ul>
     </details>
   </div>
+  </div><!-- /left-scroll -->
 
+  <div class="right-scroll">
   <div class="panel">
     <div class="kpis" id="kpis"></div>
     <div class="termbar">
@@ -156,8 +189,13 @@
     <div style="height:200px; margin-top:10px"><canvas id="chartRH"></canvas></div>
     <div class="note">※ 0次元集中定数モデル。上下成層は無視。CFD/実測でキャリブレーション係数を後付けする想定。</div>
   </div>
-</div>
+  </div><!-- /right-scroll -->
+</div><!-- /sim-wrap -->
+</div><!-- /pane-sim -->
 
+<!-- ===== タブ2: 計算ロジック ===== -->
+<div class="tab-pane" id="pane-logic">
+<div class="logic-wrap">
 <div class="flowwrap">
   <div class="legend">
     <span>記法:</span>
@@ -302,7 +340,23 @@ flowchart TD
       </div>
     </div>
   </div>
-</div>
+</div><!-- /flowwrap -->
+</div><!-- /logic-wrap -->
+</div><!-- /pane-logic -->
+
+</div><!-- /tab-panels -->
+
+<script>
+// ── タブ切り替え ──
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('pane-' + btn.dataset.tab).classList.add('active');
+  });
+});
+</script>
 
 <script>
 const $ = id => document.getElementById(id);
