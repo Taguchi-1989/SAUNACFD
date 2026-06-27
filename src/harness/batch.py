@@ -54,6 +54,26 @@ class BatchReport:
                 f"{r.interface_height:.2f} | {wall:.1f} | {hum:.1f} | {perc:.1f} |"
             )
 
+        # Convergence & energy-closure self-diagnostics. A case can satisfy the
+        # numerical residual yet fail to close its energy balance — that means
+        # the reported temperatures are an iteration-cap snapshot, not a
+        # converged steady state. Surface it instead of hiding it.
+        lines.extend([
+            "",
+            "## Convergence & Energy Balance",
+            "",
+            "| Case | Phys. converged | Energy closure | Residual [W] | Clamp active |",
+            "| ---- | --------------- | -------------- | ------------ | ------------ |",
+        ])
+        for c in self.cases:
+            r = c.result
+            phys = "yes" if r.physically_converged else "**NO**"
+            clamp = "yes" if r.clamp_active else "no"
+            lines.append(
+                f"| {c.case_name} | {phys} | {r.energy_closure * 100:.0f}% | "
+                f"{r.energy_residual_w:+.0f} | {clamp} |"
+            )
+
         lines.extend(["", "## KPI Comparison", ""])
 
         # Collect all KPI IDs across cases

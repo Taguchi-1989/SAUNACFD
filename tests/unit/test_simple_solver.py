@@ -7,8 +7,11 @@ from pathlib import Path
 import yaml
 
 from harness.simple_solver import (
+    ENERGY_CLOSURE_TOL,
     TransientResult,
+    _clamp_active,
     _compute_view_factors,
+    _energy_balance,
     _evaporation_rate,
     _perceived_temperature,
     _plume_entrainment,
@@ -142,6 +145,87 @@ class TestSolveTwoZone:
         assert len(result.residual_history) > 0
         # Residuals should generally decrease
         assert result.residual_history[-1] < result.residual_history[0]
+
+
+class TestSelfDiagnostics:
+    """Energy-closure and clamp self-diagnostics (Roadmap A)."""
+
+    def test_energy_in_equals_heater_power(self, tmp_path: Path) -> None:
+        """All heater power enters the system, so energy_in == power_w."""
+        path = _write_case_yaml(tmp_path, power_kw=9.0)
+        r = solve_two_zone(path, max_iter=10000)
+        assert abs(r.energy_in_w - 9000.0) < 1e-6
+
+    def test_energy_residual_is_in_minus_out(self, tmp_path: Path) -> None:
+        path = _write_case_yaml(tmp_path)
+        r = solve_two_zone(path, max_iter=10000)
+        assert abs(r.energy_residual_w - (r.energy_in_w - r.energy_out_w)) < 1e-6
+
+    def test_energy_closure_is_out_over_in(self, tmp_path: Path) -> None:
+        path = _write_case_yaml(tmp_path)
+        r = solve_two_zone(path, max_iter=10000)
+        assert abs(r.energy_closure - r.energy_out_w / r.energy_in_w) < 1e-9
+
+    def test_physically_converged_invariant(self, tmp_path: Path) -> None:
+        """physical convergence == numerical AND energy closed AND no clamp.
+
+        This invariant must hold regardless of the model's current closure, so
+        it stays valid even after the energy balance is later improved.
+        """
+        path = _write_case_yaml(tmp_path)
+        r = solve_two_zone(path, max_iter=10000)
+        expected = (
+            r.converged
+            and abs(1.0 - r.energy_closure) <= ENERGY_CLOSURE_TOL
+            and not r.clamp_active
+        )
+        assert r.physically_converged is expected
+
+    def test_numerical_convergence_can_hide_energy_imbalance(self, tmp_path: Path) -> None:
+        """The default case meets the residual but does NOT close energy.
+
+        Documents the central validity finding (review C2): a passing numerical
+        residual is not evidence of a physical steady state. If a future model
+        change actually closes the balance, this test should be updated.
+        """
+        path = _write_case_yaml(tmp_path, power_kw=9.0)
+        r = solve_two_zone(path, max_iter=10000)
+        assert r.converged is True
+        assert abs(1.0 - r.energy_closure) > ENERGY_CLOSURE_TOL
+        assert r.physically_converged is False
+
+    def test_transient_exposes_diagnostics(self, tmp_path: Path) -> None:
+        path = _write_case_yaml(tmp_path)
+        r = solve_transient(path, end_time=200.0, physical_dt=1.0, record_interval=10.0)
+        s = r.steady_result
+        assert abs(s.energy_in_w - 9000.0) < 1e-6
+        assert s.energy_out_w >= 0.0
+
+    def test_clamp_active_detects_interface_floor(self) -> None:
+        """A z_int resting on the lower clamp bound is flagged."""
+        assert _clamp_active(
+            z_int=0.05 * 2.5, t_upper=350.0, t_lower=320.0,
+            height=2.5, t_wall_inner=300.0, t_wall=293.15,
+        ) is True
+
+    def test_clamp_active_false_for_interior_state(self) -> None:
+        assert _clamp_active(
+            z_int=1.2, t_upper=360.0, t_lower=320.0,
+            height=2.5, t_wall_inner=300.0, t_wall=293.15,
+        ) is False
+
+    def test_energy_balance_lumped_uses_conduction(self) -> None:
+        """Lumped wall: q_ext is conduction to outside, independent of h_wall."""
+        eb = _energy_balance(
+            power_w=9000.0, wall_cfg="lumped", wall_lambda=0.12,
+            wall_thickness=0.015, a_wall_total=42.5, a_wall_upper=20.0,
+            a_wall_lower=22.5, h_wall=8.0, t_upper=360.0, t_lower=330.0,
+            t_wall_inner=330.0, t_wall=293.15, m_vent=0.0, cp_eff=1005.0,
+            t_ambient_vent=293.15,
+        )
+        expected = 0.12 / 0.015 * 42.5 * (330.0 - 293.15)
+        assert abs(eb["energy_out_w"] - expected) < 1e-6
+        assert eb["energy_in_w"] == 9000.0
 
 
 def _write_loyly_yaml(tmp_path: Path, water_ml: float = 100, **overrides) -> Path:
