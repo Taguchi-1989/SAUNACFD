@@ -56,6 +56,13 @@ class SimpleSolverResult:
     relative_humidity: float = 0.0     # 0-1
     perceived_temp_upper: float = 0.0  # perceived temp at upper layer [C]
     perceived_temp_lower: float = 0.0  # perceived temp at lower layer [C]
+    # Self-diagnostics (energy closure + clamp/convergence honesty)
+    energy_in_w: float = 0.0           # total power entering the system [W]
+    energy_out_w: float = 0.0          # total power leaving the system [W]
+    energy_residual_w: float = 0.0     # energy_in - energy_out [W] (->0 at true steady state)
+    energy_closure: float = 0.0        # energy_out / energy_in (->1 at true steady state)
+    clamp_active: bool = False         # True if a state variable rests on a clamp bound
+    physically_converged: bool = False  # numerical convergence AND energy closed AND no active clamp
 
 
 @dataclass
@@ -456,6 +463,91 @@ def _q_rad_body(
     )
 
 
+# Tolerance below which the energy balance is considered "closed" and a state
+# variable is considered to be resting on a clamp boundary.
+ENERGY_CLOSURE_TOL = 0.10   # |1 - out/in| must be under this for physical convergence
+_CLAMP_EPS = 1e-4           # absolute proximity to a clamp bound [K or m]
+
+
+def _energy_balance(
+    *,
+    power_w: float,
+    wall_cfg: str,
+    wall_lambda: float,
+    wall_thickness: float,
+    a_wall_total: float,
+    a_wall_upper: float,
+    a_wall_lower: float,
+    h_wall: float,
+    t_upper: float,
+    t_lower: float,
+    t_wall_inner: float,
+    t_wall: float,
+    m_vent: float,
+    cp_eff: float,
+    t_ambient_vent: float,
+) -> dict[str, float]:
+    """Closed-form energy balance of the two-zone system at a given state.
+
+    All heater power ``power_w`` enters the system (convective fraction into the
+    air via the plume, radiant fraction into the walls or air depending on the
+    wall model). At a true steady state this must equal the energy leaving the
+    system boundary:
+
+      - lumped wall: conduction through the wall to the outside,
+        ``q_ext = (lambda / thickness) * A_wall * (T_wall_inner - T_outside)``
+      - fixed wall: convection from the air to the fixed-temperature wall sink,
+        ``q_ext = h * A_up * (T_up - T_wall) + h * A_lo * (T_lo - T_wall)``
+
+    plus ventilation enthalpy carried out by the exhaust.
+
+    A ``energy_closure`` far from 1.0 means the reported state is NOT a converged
+    steady state, regardless of the numerical residual.
+    """
+    p_in = power_w
+    if wall_cfg == "lumped":
+        q_ext = wall_lambda / wall_thickness * a_wall_total * (t_wall_inner - t_wall)
+    else:
+        q_ext = (
+            h_wall * a_wall_upper * (t_upper - t_wall_inner)
+            + h_wall * a_wall_lower * (t_lower - t_wall_inner)
+        )
+    q_vent = m_vent * cp_eff * (t_upper - t_ambient_vent) if m_vent > 0 else 0.0
+    p_out = q_ext + q_vent
+    residual = p_in - p_out
+    closure = p_out / p_in if abs(p_in) > 1e-9 else 0.0
+    return {
+        "energy_in_w": float(p_in),
+        "energy_out_w": float(p_out),
+        "energy_residual_w": float(residual),
+        "energy_closure": float(closure),
+    }
+
+
+def _clamp_active(
+    *,
+    z_int: float,
+    t_upper: float,
+    t_lower: float,
+    height: float,
+    t_wall_inner: float,
+    t_wall: float,
+) -> bool:
+    """True if any state variable is resting on a clamp boundary.
+
+    A clamped state is held in place by ``np.clip`` rather than by the physics,
+    so a "converged" residual on a clamped variable is not a physical
+    equilibrium. Bounds mirror the clamps applied in the solver loops.
+    """
+    if abs(z_int - 0.05 * height) < _CLAMP_EPS or abs(z_int - 0.95 * height) < _CLAMP_EPS:
+        return True
+    if abs(t_upper - t_wall_inner) < _CLAMP_EPS or abs(t_upper - (t_wall_inner + 200)) < _CLAMP_EPS:
+        return True
+    if abs(t_lower - (t_wall - 1)) < _CLAMP_EPS:
+        return True
+    return False
+
+
 def _build_profile_and_probes(
     *,
     data: dict,
@@ -513,8 +605,14 @@ def _make_simple_result(
     humidity_ratio: float,
     q_rad_body: float = 0.0,
     vent_mass_flow: float = 0.0,
+    energy: dict[str, float] | None = None,
+    clamp_active: bool = False,
 ) -> SimpleSolverResult:
     """Assemble a ``SimpleSolverResult`` from the current zone state."""
+    energy = energy or {}
+    closure = energy.get("energy_closure", 0.0)
+    energy_ok = abs(1.0 - closure) <= ENERGY_CLOSURE_TOL
+    physically_converged = bool(converged and energy_ok and not clamp_active)
     y, temperatures, probe_values = _build_profile_and_probes(
         data=data,
         height=height,
@@ -549,6 +647,12 @@ def _make_simple_result(
         relative_humidity=float(props_upper["relative_humidity"]),
         perceived_temp_upper=float(props_upper["perceived_temp_c"]),
         perceived_temp_lower=float(props_lower["perceived_temp_c"]),
+        energy_in_w=float(energy.get("energy_in_w", 0.0)),
+        energy_out_w=float(energy.get("energy_out_w", 0.0)),
+        energy_residual_w=float(energy.get("energy_residual_w", 0.0)),
+        energy_closure=float(closure),
+        clamp_active=bool(clamp_active),
+        physically_converged=physically_converged,
     )
 
 
@@ -836,6 +940,33 @@ def solve_two_zone(
         power_w, f_conv, f_body, heater_w, heater_h, t_wall_inner,
     )
 
+    # --- Self-diagnostics: energy closure + clamp honesty ---
+    energy = _energy_balance(
+        power_w=power_w,
+        wall_cfg=wall_cfg,
+        wall_lambda=wall_lambda,
+        wall_thickness=wall_thickness,
+        a_wall_total=a_wall_total,
+        a_wall_upper=a_wall_upper,
+        a_wall_lower=a_wall_lower,
+        h_wall=h_wall,
+        t_upper=t_upper,
+        t_lower=t_lower,
+        t_wall_inner=t_wall_inner,
+        t_wall=t_wall,
+        m_vent=m_vent if vent_enabled else 0.0,
+        cp_eff=cp_eff,
+        t_ambient_vent=t_ambient_vent,
+    )
+    clamp_flag = _clamp_active(
+        z_int=z_int,
+        t_upper=t_upper,
+        t_lower=t_lower,
+        height=height,
+        t_wall_inner=t_wall_inner,
+        t_wall=t_wall,
+    )
+
     return _make_simple_result(
         data=data,
         n_profile=n_profile,
@@ -857,6 +988,8 @@ def solve_two_zone(
         humidity_ratio=humidity_ratio,
         q_rad_body=q_rad_body_val,
         vent_mass_flow=m_vent if vent_enabled else 0.0,
+        energy=energy,
+        clamp_active=clamp_flag,
     )
 
 
@@ -994,6 +1127,11 @@ def solve_transient(
     current_time = 0.0
     t_plume = t_upper
     m_plume = 0.0
+    # Defaults so post-loop diagnostics are defined even if the loop never runs
+    h_wall = 8.0
+    cp_eff = cp
+    m_vent = 0.0
+    t_ambient_vent = t_wall
 
     while current_time < end_time - 1e-9:
         # Limit dt_step so we never skip a record point
@@ -1209,6 +1347,35 @@ def solve_transient(
     else:
         converged = False
 
+    # --- Self-diagnostics on the reported (time-averaged) state ---
+    a_wall_upper_avg = perimeter * (height - z_int_avg) + a_floor
+    a_wall_lower_avg = perimeter * z_int_avg + a_floor
+    energy = _energy_balance(
+        power_w=power_w,
+        wall_cfg=wall_cfg,
+        wall_lambda=wall_lambda,
+        wall_thickness=wall_thickness,
+        a_wall_total=a_wall_total,
+        a_wall_upper=a_wall_upper_avg,
+        a_wall_lower=a_wall_lower_avg,
+        h_wall=h_wall,
+        t_upper=t_upper_avg,
+        t_lower=t_lower_avg,
+        t_wall_inner=t_wall_inner,
+        t_wall=t_wall,
+        m_vent=m_vent if vent_enabled else 0.0,
+        cp_eff=cp_eff,
+        t_ambient_vent=t_ambient_vent,
+    )
+    clamp_flag = _clamp_active(
+        z_int=z_int_avg,
+        t_upper=t_upper_avg,
+        t_lower=t_lower_avg,
+        height=height,
+        t_wall_inner=t_wall_inner,
+        t_wall=t_wall,
+    )
+
     steady = _make_simple_result(
         data=data,
         n_profile=n_profile,
@@ -1230,6 +1397,8 @@ def solve_transient(
         humidity_ratio=humidity_ratio,
         q_rad_body=q_rad_body_val,
         vent_mass_flow=m_vent if vent_enabled else 0.0,
+        energy=energy,
+        clamp_active=clamp_flag,
     )
 
     return TransientResult(
