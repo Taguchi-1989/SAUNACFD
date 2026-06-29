@@ -244,8 +244,10 @@ def sensitivity(case_yaml: str, params: tuple[str, ...], max_iter: int,
         data = load_yaml(Path(case_yaml))
         candidates = [
             ("boundary_conditions.heater.power_kw", 0.10),
+            ("boundary_conditions.heater.convective_fraction", 0.10),
             ("boundary_conditions.walls.conductivity", 0.20),
             ("boundary_conditions.walls.thickness", 0.20),
+            ("boundary_conditions.walls.h_natural", 0.20),
         ]
         specs = []
         for path, sig in candidates:

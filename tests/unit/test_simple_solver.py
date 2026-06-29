@@ -414,6 +414,56 @@ class TestLoylySensibleHeat:
         assert excess < 15.0, f"sensible bump implausibly large ({excess:.1f} K) — latent leak?"
 
 
+class TestParameterization:
+    """Newly YAML-exposed model constants: convective_fraction, h_natural."""
+
+    def _case(self, tmp_path: Path, **walls_heater) -> Path:
+        path = _write_case_yaml(tmp_path)
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        data["boundary_conditions"]["walls"]["model"] = "lumped"
+        for key in ("convective_fraction",):
+            if key in walls_heater:
+                data["boundary_conditions"]["heater"][key] = walls_heater[key]
+        for key in ("h_natural",):
+            if key in walls_heater:
+                data["boundary_conditions"]["walls"][key] = walls_heater[key]
+        path.write_text(yaml.dump(data), encoding="utf-8")
+        return path
+
+    def test_default_matches_explicit_nominal(self, tmp_path: Path) -> None:
+        """Omitting the keys equals setting them to the historical defaults."""
+        (tmp_path / "d").mkdir()
+        (tmp_path / "e").mkdir()
+        r_default = solve_two_zone(self._case(tmp_path / "d"), max_iter=3000)
+        r_explicit = solve_two_zone(
+            self._case(tmp_path / "e", convective_fraction=0.7, h_natural=8.0),
+            max_iter=3000,
+        )
+        assert abs(r_default.upper_layer_temp - r_explicit.upper_layer_temp) < 1e-6
+
+    def test_higher_convective_fraction_warms_air(self, tmp_path: Path) -> None:
+        (tmp_path / "lo").mkdir()
+        (tmp_path / "hi").mkdir()
+        r_lo = solve_two_zone(self._case(tmp_path / "lo", convective_fraction=0.5), max_iter=3000)
+        r_hi = solve_two_zone(self._case(tmp_path / "hi", convective_fraction=0.9), max_iter=3000)
+        assert r_hi.upper_layer_temp > r_lo.upper_layer_temp
+
+    def test_higher_h_natural_cools_air(self, tmp_path: Path) -> None:
+        (tmp_path / "lo").mkdir()
+        (tmp_path / "hi").mkdir()
+        r_lo = solve_two_zone(self._case(tmp_path / "lo", h_natural=6.0), max_iter=3000)
+        r_hi = solve_two_zone(self._case(tmp_path / "hi", h_natural=16.0), max_iter=3000)
+        assert r_hi.upper_layer_temp < r_lo.upper_layer_temp
+
+    def test_humid_air_h_wall_base_scales_htc(self) -> None:
+        from harness.simple_solver import _humid_air_properties
+        p8 = _humid_air_properties(350.0, 0.0, h_wall_base=8.0)
+        p16 = _humid_air_properties(350.0, 0.0, h_wall_base=16.0)
+        # Dry air: h_ratio == 1, so h_wall_eff == h_wall_base.
+        assert abs(p8["h_wall_eff"] - 8.0) < 1e-9
+        assert abs(p16["h_wall_eff"] - 16.0) < 1e-9
+
+
 class TestSteadyAufgussWarning:
     """C5: Aufguss is transient; the steady solver warns it is a surrogate."""
 

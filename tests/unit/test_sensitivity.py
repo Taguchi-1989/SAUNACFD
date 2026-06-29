@@ -65,6 +65,27 @@ class TestLocalSensitivities:
         assert s.d_kpi_d_param > 0.0
         assert s.elasticity > 0.0
 
+    def test_newly_exposed_params_are_perturbable(self, tmp_path: Path) -> None:
+        """convective_fraction and h_natural can now drive sensitivity."""
+        case = _write_case(tmp_path)
+        data = yaml.safe_load(case.read_text(encoding="utf-8"))
+        data["boundary_conditions"]["heater"]["convective_fraction"] = 0.7
+        data["boundary_conditions"]["walls"]["h_natural"] = 8.0
+        case.write_text(yaml.dump(data), encoding="utf-8")
+        sens = local_sensitivities(
+            case,
+            [
+                ParamSpec("boundary_conditions.heater.convective_fraction"),
+                ParamSpec("boundary_conditions.walls.h_natural"),
+            ],
+            kpis={"upper_temp_c": kpi_upper_temp_c},
+            max_iter=2000,
+        )
+        fconv = next(s for s in sens if s.param.endswith("convective_fraction"))
+        hnat = next(s for s in sens if s.param.endswith("h_natural"))
+        assert fconv.d_kpi_d_param > 0.0   # more convection -> hotter air
+        assert hnat.d_kpi_d_param < 0.0    # more wall HTC -> cooler air
+
     def test_conductivity_lowers_temp(self, tmp_path: Path) -> None:
         case = _write_case(tmp_path)
         sens = local_sensitivities(
