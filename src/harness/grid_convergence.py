@@ -93,6 +93,10 @@ def three_grid_gci(
     eps21 = phi2 - phi1
 
     # Degenerate case: no change between grids -> already mesh-independent.
+    # Raw relative differences (used for both the GCI and the degenerate guards).
+    e21a = abs((phi1 - phi2) / phi1) if phi1 != 0 else abs(phi1 - phi2)
+    e32a = abs((phi2 - phi3) / phi2) if phi2 != 0 else abs(phi2 - phi3)
+
     if abs(eps21) < 1e-12 and abs(eps32) < 1e-12:
         return GridConvergenceResult(
             observed_order_p=float("nan"),
@@ -103,6 +107,28 @@ def three_grid_gci(
             in_asymptotic_range=True,
             refinement_ratios=(r21, r32),
             note="solutions identical across grids — already mesh-independent",
+        )
+
+    # Partial convergence: exactly one grid pair is identical while the third
+    # differs (e.g. fine==medium but coarse moved, or medium==coarse but fine
+    # moved). The observed order p is then undefined — solving for it divides by
+    # zero / takes log(0). This is a real mesh-study outcome, so report it
+    # cleanly: no order, fine value as best estimate, and the raw relative
+    # differences as a conservative (non-Richardson) error proxy.
+    if abs(eps21) < 1e-12 or abs(eps32) < 1e-12:
+        return GridConvergenceResult(
+            observed_order_p=float("nan"),
+            extrapolated_value=phi1,
+            gci_fine_pct=e21a * 100.0,
+            gci_medium_pct=e32a * 100.0,
+            asymptotic_ratio=float("nan"),
+            in_asymptotic_range=False,
+            refinement_ratios=(r21, r32),
+            note=(
+                "order unresolved: one grid pair is identical (partial "
+                "convergence). GCI shown is the raw relative difference, not a "
+                "Richardson estimate — refine further to resolve the order."
+            ),
         )
 
     s = math.copysign(1.0, eps32 / eps21) if eps21 != 0 else 1.0
@@ -125,9 +151,7 @@ def three_grid_gci(
     # Richardson extrapolation of the fine-grid solution to h -> 0.
     phi_ext = (r21**p * phi1 - phi2) / (r21**p - 1.0)
 
-    # Grid Convergence Index (relative form).
-    e21a = abs((phi1 - phi2) / phi1) if phi1 != 0 else abs(phi1 - phi2)
-    e32a = abs((phi2 - phi3) / phi2) if phi2 != 0 else abs(phi2 - phi3)
+    # Grid Convergence Index (relative form); e21a/e32a computed above.
     gci_fine = safety_factor * e21a / (r21**p - 1.0) * 100.0
     gci_medium = safety_factor * e32a / (r32**p - 1.0) * 100.0
 

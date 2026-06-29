@@ -263,7 +263,7 @@ def sensitivity(case_yaml: str, params: tuple[str, ...], max_iter: int,
     case = Path(case_yaml)
     click.echo(f"Running sensitivity over {len(specs)} parameters...")
     sens = local_sensitivities(case, specs, max_iter=max_iter)
-    bands = propagate_uncertainty(case, specs, max_iter=max_iter)
+    bands = propagate_uncertainty(case, specs, max_iter=max_iter, sens=sens)
     md = sensitivity_report_markdown(sens, bands)
     click.echo(md)
     if output:

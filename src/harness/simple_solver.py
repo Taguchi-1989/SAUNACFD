@@ -1237,10 +1237,12 @@ def solve_transient(
 
                 # Sensible heat carried by the hot steam INTO the air.
                 # The vapor leaves the wet stones well above room-air
-                # temperature, depositing sensible enthalpy (sourced from the
-                # stones) on top of the humidity rise. This is what produces the
-                # brief post-löyly dry-bulb temperature peak that KPIs K-02/K-04
-                # are meant to capture; without it the steam was thermally inert.
+                # temperature, depositing sensible enthalpy on top of the
+                # humidity rise. This produces the brief post-löyly dry-bulb peak
+                # that KPIs K-02/K-04 are meant to capture; without it the steam
+                # was thermally inert. NOTE: the stone heat reservoir is not a
+                # tracked state, so this term is an un-debited source — small
+                # (sensible << latent) and bounded, acceptable for the ROM.
                 if steam_temp_k > t_upper:
                     q_steam_sensible = mass_evap * CP_VAPOR * (steam_temp_k - t_upper)
                     t_upper += q_steam_sensible / (m_upper * cp_eff)

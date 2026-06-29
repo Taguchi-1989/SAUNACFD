@@ -48,6 +48,26 @@ class TestThreeGridGCI:
         assert res.in_asymptotic_range
         assert res.extrapolated_value == 95.0
 
+    def test_partial_convergence_fine_equals_medium(self) -> None:
+        """fine==medium but coarse differs must not crash (order unresolved)."""
+        coarse, med, fine = _levels(116.0, 101.0, 101.0)
+        res = three_grid_gci(coarse, med, fine)
+        assert math.isnan(res.observed_order_p)
+        assert res.extrapolated_value == 101.0
+        assert not res.in_asymptotic_range
+        assert res.note is not None and "unresolved" in res.note
+        assert res.gci_fine_pct == 0.0  # fine and medium agree
+
+    def test_partial_convergence_medium_equals_coarse(self) -> None:
+        """medium==coarse but fine differs must not crash (order unresolved)."""
+        coarse, med, fine = _levels(104.0, 104.0, 101.0)
+        res = three_grid_gci(coarse, med, fine)
+        assert math.isnan(res.observed_order_p)
+        assert res.extrapolated_value == 101.0
+        assert not res.in_asymptotic_range
+        assert res.gci_medium_pct == 0.0  # medium and coarse agree
+        assert res.gci_fine_pct > 0.0     # fine moved
+
     def test_requires_ordered_grids(self) -> None:
         bad_fine = GridLevel("M2", 1000, 101.0)  # fewer cells than medium
         med = GridLevel("M1", 64000, 104.0)

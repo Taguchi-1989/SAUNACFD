@@ -171,15 +171,20 @@ def propagate_uncertainty(
     rel_delta: float = 0.05,
     max_iter: int = 4000,
     n_profile: int = 40,
+    sens: list[Sensitivity] | None = None,
 ) -> list[UncertaintyBand]:
     """First-order (linear) propagation of parameter uncertainty to each KPI.
 
     sigma_KPI = sqrt( sum_i ( dKPI/dp_i * sigma_p_i )^2 ),  sigma_p_i = rel_sigma_i * p_i.
     Assumes independent parameters and local linearity — adequate for a
     PoC-level error band, not a full nonlinear/correlated propagation.
+
+    Pass ``sens`` (from a prior ``local_sensitivities`` call with the same specs
+    and kpis) to avoid re-running the solver; otherwise it is computed here.
     """
     kpis = kpis or DEFAULT_KPIS
-    sens = local_sensitivities(case_yaml, specs, kpis, rel_delta, max_iter, n_profile)
+    if sens is None:
+        sens = local_sensitivities(case_yaml, specs, kpis, rel_delta, max_iter, n_profile)
     base_data = load_yaml(case_yaml)
 
     bands: list[UncertaintyBand] = []
