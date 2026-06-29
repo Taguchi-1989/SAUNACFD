@@ -118,7 +118,10 @@ def _run_with_overrides(
     ) as f:
         yaml.safe_dump(data, f)
         tmp_path = Path(f.name)
-    return solve_two_zone(tmp_path, max_iter=max_iter, n_profile=n_profile)
+    try:
+        return solve_two_zone(tmp_path, max_iter=max_iter, n_profile=n_profile)
+    finally:
+        tmp_path.unlink(missing_ok=True)
 
 
 def local_sensitivities(
