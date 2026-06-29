@@ -16,20 +16,42 @@ class KPIResult:
     value: float
     unit: str
     pass_fail: str | None = None  # "pass", "fail", or None
+    note: str | None = None  # caveat: proxy/tautology/assumptions, surfaced honestly
+
+
+# Plausible steady-state upper/lower stratification band for a sauna [K].
+# Below MIN the room is essentially well-mixed (no meaningful stratification);
+# above MAX the differential is physically implausible and usually signals a
+# non-converged or runaway solution. A bare ``diff > 0`` test is tautological —
+# any trace of stratification passes — so K-01 checks the band instead.
+K01_STRATIFICATION_MIN_K = 2.0
+K01_STRATIFICATION_MAX_K = 80.0
 
 
 def compute_k01(upper_temp: float, lower_temp: float) -> KPIResult:
     """K-01: Steady-state temperature differential (upper - lower bench).
 
-    A positive value indicates thermal stratification (hot air rises).
+    A positive value indicates thermal stratification (hot air rises). The
+    pass band requires the differential to be both non-trivial and physically
+    plausible (``2 K <= diff <= 80 K``), not merely positive.
     """
     diff = upper_temp - lower_temp
+    in_band = K01_STRATIFICATION_MIN_K <= diff <= K01_STRATIFICATION_MAX_K
+    note = None
+    if not in_band:
+        if diff <= 0:
+            note = "no/inverted stratification"
+        elif diff < K01_STRATIFICATION_MIN_K:
+            note = f"below {K01_STRATIFICATION_MIN_K:g} K — effectively well-mixed"
+        else:
+            note = f"above {K01_STRATIFICATION_MAX_K:g} K — implausible, suspect non-convergence"
     return KPIResult(
         kpi_id="K-01",
         name="Steady-state temperature differential",
         value=round(diff, 2),
         unit="K",
-        pass_fail="pass" if diff > 0 else "fail",
+        pass_fail="pass" if in_band else "fail",
+        note=note,
     )
 
 
@@ -102,21 +124,27 @@ def compute_k04(
     )
 
 
-def compute_k05(beta_aug: float) -> KPIResult:
-    """K-05: Face-level wind speed proxy from Aufguss mixing coefficient.
+def compute_k05(beta_aug: float, rho: float = 0.9, a_face: float = 0.05) -> KPIResult:
+    """K-05: Face-level wind speed proxy from the Aufguss mixing coefficient.
 
-    Approximate face wind speed from forced mixing rate.
-    v ~ beta_aug / (rho * A_face), rough estimate.
+    ``v ~ beta_aug / (rho * A_face)``. This is an **order-of-magnitude proxy,
+    not a prediction**: ``beta_aug`` is a user-supplied mixing rate and the face
+    area is assumed, so the output is essentially a linear rescale of an input
+    knob. It is reported (no pass/fail) so the value is not mistaken for a
+    validated wind speed. A real face velocity needs a jet/momentum source
+    model (towel throw geometry, nozzle area, decay), tracked as future work.
     """
-    rho = 0.9  # hot air density ~100C [kg/m3]
-    a_face = 0.05  # effective face area [m2]
     v_proxy = beta_aug / (rho * a_face) if beta_aug > 0 else 0.0
     return KPIResult(
         kpi_id="K-05",
         name="Face-level wind speed (proxy)",
         value=round(v_proxy, 2),
         unit="m/s",
-        pass_fail="pass" if v_proxy > 0.1 else None,
+        pass_fail=None,
+        note=(
+            f"order-of-magnitude proxy: linear in beta_aug "
+            f"(rho={rho:g}, A_face={a_face:g} m^2 assumed); not a jet model"
+        ),
     )
 
 
