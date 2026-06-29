@@ -162,7 +162,8 @@
       "properties": {
         "water_ml": {"type": "number", "minimum": 0, "description": "Water amount in mL"},
         "time": {"type": "number", "minimum": 0, "description": "Time when water is poured [s]"},
-        "tau_evap": {"type": "number", "minimum": 0.1, "default": 5.0, "description": "Evaporation time constant [s]"}
+        "tau_evap": {"type": "number", "minimum": 0.1, "default": 5.0, "description": "Evaporation time constant [s]"},
+        "steam_temp_c": {"type": "number", "minimum": 0, "default": 100.0, "description": "Temperature of steam leaving the stones [°C]; sets the sensible-heat dry-bulb bump (transient only)"}
       },
       "required": ["water_ml"],
       "additionalProperties": false
