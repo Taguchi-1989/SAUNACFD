@@ -266,6 +266,8 @@ def _write_loyly_yaml(tmp_path: Path, water_ml: float = 100, **overrides) -> Pat
     for key, val in overrides.items():
         if key == "power_kw":
             data["boundary_conditions"]["heater"]["power_kw"] = val
+        elif key == "steam_temp_c":
+            data["loyly"]["steam_temp_c"] = val
     path = tmp_path / "loyly_case.yaml"
     with open(path, "w", encoding="utf-8") as f:
         yaml.dump(data, f)
@@ -359,6 +361,77 @@ class TestSteamPhysics:
         # With 100mL of water, should have positive steam
         assert result.steam_mass_flow > 0.0
         assert result.total_steam_generated > 0.0
+
+
+class TestLoylySensibleHeat:
+    """C3: löyly steam carries sensible heat into the air (dry-bulb peak)."""
+
+    def test_steam_adds_dry_bulb_heat_vs_dry(self, tmp_path: Path) -> None:
+        """During the löyly window, wet T_upper exceeds the dry case.
+
+        The hot steam deposits sensible enthalpy on top of the humidity rise,
+        producing the dry-bulb bump that K-02/K-04 are meant to capture.
+        """
+        (tmp_path / "dry").mkdir()
+        (tmp_path / "wet").mkdir()
+        dry_path = _write_case_yaml(tmp_path / "dry")
+        wet_path = _write_loyly_yaml(tmp_path / "wet", water_ml=200)
+        dry = solve_transient(dry_path, end_time=60.0, physical_dt=0.5, record_interval=1.0)
+        wet = solve_transient(wet_path, end_time=60.0, physical_dt=0.5, record_interval=1.0)
+        # In the first 30 s (löyly burst), wet must rise above dry somewhere.
+        early = wet.time <= 30.0
+        max_excess = float((wet.t_upper_series[early] - dry.t_upper_series[early]).max())
+        assert max_excess > 0.0, f"steam should add sensible heat, excess={max_excess:.3f}"
+
+    def test_hotter_steam_gives_higher_peak(self, tmp_path: Path) -> None:
+        """Higher steam injection temperature deposits more sensible heat."""
+        (tmp_path / "cool").mkdir()
+        (tmp_path / "hot").mkdir()
+        cool = _write_loyly_yaml(tmp_path / "cool", water_ml=300)
+        hot = _write_loyly_yaml(tmp_path / "hot", water_ml=300, steam_temp_c=300.0)
+        r_cool = solve_transient(cool, end_time=60.0, physical_dt=0.5, record_interval=1.0)
+        r_hot = solve_transient(hot, end_time=60.0, physical_dt=0.5, record_interval=1.0)
+        # The steam-temperature effect acts only during the brief injection
+        # burst; the global max is dominated by ongoing room warming, so compare
+        # within the löyly window where the sensible term actually differs.
+        early = r_cool.time <= 25.0
+        assert float(r_hot.t_upper_series[early].max()) > float(r_cool.t_upper_series[early].max())
+
+    def test_latent_heat_not_double_counted(self, tmp_path: Path) -> None:
+        """Sensible bump stays bounded — steam does not dump latent heat into air.
+
+        A 200 mL löyly should not raise the peak by more than a few K above the
+        dry case; the latent heat comes from the stones, only the modest steam
+        sensible term enters the air.
+        """
+        (tmp_path / "dry").mkdir()
+        (tmp_path / "wet").mkdir()
+        dry = solve_transient(_write_case_yaml(tmp_path / "dry"),
+                              end_time=60.0, physical_dt=0.5, record_interval=1.0)
+        wet = solve_transient(_write_loyly_yaml(tmp_path / "wet", water_ml=200),
+                              end_time=60.0, physical_dt=0.5, record_interval=1.0)
+        excess = float(wet.t_upper_series.max() - dry.t_upper_series.max())
+        assert excess < 15.0, f"sensible bump implausibly large ({excess:.1f} K) — latent leak?"
+
+
+class TestSteadyAufgussWarning:
+    """C5: Aufguss is transient; the steady solver warns it is a surrogate."""
+
+    def test_steady_aufguss_warns(self, tmp_path: Path) -> None:
+        import warnings as _w
+        path = _write_aufguss_yaml(tmp_path, beta_aug=0.5)
+        with _w.catch_warnings(record=True) as caught:
+            _w.simplefilter("always")
+            solve_two_zone(path, max_iter=2000)
+        assert any("Aufguss" in str(c.message) for c in caught)
+
+    def test_no_warning_without_aufguss(self, tmp_path: Path) -> None:
+        import warnings as _w
+        path = _write_case_yaml(tmp_path)
+        with _w.catch_warnings(record=True) as caught:
+            _w.simplefilter("always")
+            solve_two_zone(path, max_iter=2000)
+        assert not any("Aufguss" in str(c.message) for c in caught)
 
 
 class TestViewFactors:

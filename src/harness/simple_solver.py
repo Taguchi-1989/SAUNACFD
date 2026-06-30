@@ -22,6 +22,7 @@ References:
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -722,6 +723,19 @@ def solve_two_zone(
         beta_aug = aufguss.get("beta_aug", 0.0)
         aufguss_start = aufguss.get("start_time", 0.0)
         aufguss_duration = aufguss.get("duration", 30.0)
+        if beta_aug > 0:
+            # Aufguss is an inherently transient event (a fan-driven burst of
+            # seconds to a couple of minutes). The steady solver has no physical
+            # time, so it applies the mixing continuously — a crude
+            # time-averaged surrogate, not a real Aufguss. Use solve_transient
+            # with an Aufguss window for physically meaningful results.
+            warnings.warn(
+                "Aufguss (beta_aug>0) on the steady two-zone solver is applied "
+                "continuously as a time-averaged surrogate, not a transient "
+                "event. Use solve_transient with an Aufguss window for "
+                "physical results.",
+                stacklevel=2,
+            )
     else:
         beta_aug = 0.0
         aufguss_start = 0.0
@@ -1046,10 +1060,15 @@ def solve_transient(
         water_kg = loyly.get("water_ml", 0) / 1000.0
         loyly_time = loyly.get("time", 0.0)
         tau_evap = loyly.get("tau_evap", 5.0)
+        # Temperature [K] at which steam leaves the wet stones and enters the
+        # air. Default 100 degC (saturation off just-boiled water) is a
+        # conservative lower bound; superheated steam off hot stones is hotter.
+        steam_temp_k = loyly.get("steam_temp_c", 100.0) + 273.15
     else:
         water_kg = 0.0
         loyly_time = 0.0
         tau_evap = 5.0
+        steam_temp_k = 373.15
 
     # Aufguss parameters
     aufguss = data.get("aufguss")
@@ -1077,6 +1096,7 @@ def solve_transient(
     MW_STEAM = 18.015e-3
     R_GAS = 8.314
     P_ATM = 101325.0
+    CP_VAPOR = 1860.0  # specific heat of water vapor [J/(kg*K)]
 
     wall_cfg = walls.get("model", "fixed")
     wall_thickness = walls.get("thickness", 0.015)
@@ -1204,10 +1224,21 @@ def solve_transient(
             peak_steam_rate = max(peak_steam_rate, m_dot_steam)
             total_steam += mass_evap
 
-            # Latent heat is drawn from stones/heater, not added to air.
-            # Steam adds humidity but not net thermal energy.
+            # Latent heat of vaporisation is drawn from the stones, not the air,
+            # so it does NOT directly heat the room — it only raises humidity.
             if m_upper > 0.1:
                 humidity_ratio += mass_evap / m_upper
+
+                # Sensible heat carried by the hot steam INTO the air.
+                # The vapor leaves the wet stones well above room-air
+                # temperature, depositing sensible enthalpy (sourced from the
+                # stones) on top of the humidity rise. This is what produces the
+                # brief post-löyly dry-bulb temperature peak that KPIs K-02/K-04
+                # are meant to capture; without it the steam was thermally inert.
+                if steam_temp_k > t_upper:
+                    q_steam_sensible = mass_evap * CP_VAPOR * (steam_temp_k - t_upper)
+                    t_upper += q_steam_sensible / (m_upper * cp_eff)
+                    t_upper = np.clip(t_upper, t_wall_inner, t_wall_inner + 200)
 
             v_steam = m_dot_steam * R_GAS * t_upper / (P_ATM * MW_STEAM)
         else:
