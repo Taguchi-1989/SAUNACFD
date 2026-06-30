@@ -215,5 +215,61 @@ def batch(case_dir: str, output: str | None, max_iter: int) -> None:
         click.echo(f"\nReport saved to {out_path}")
 
 
+@main.command()
+@click.argument("case_yaml", type=click.Path(exists=True))
+@click.option("--param", "-p", "params", multiple=True,
+              help="Parameter as dotted.path[:rel_sigma], repeatable. "
+                   "Defaults to heater power, wall conductivity, wall thickness.")
+@click.option("--max-iter", default=4000, help="Max solver iterations per run")
+@click.option("--output", "-o", default=None, help="Output markdown file path")
+def sensitivity(case_yaml: str, params: tuple[str, ...], max_iter: int,
+                output: str | None) -> None:
+    """Parameter sensitivity & uncertainty bands for the two-zone ROM (C10)."""
+    from harness.sensitivity import (
+        ParamSpec,
+        local_sensitivities,
+        propagate_uncertainty,
+        sensitivity_report_markdown,
+    )
+
+    if params:
+        specs = []
+        for raw in params:
+            path, _, sig = raw.partition(":")
+            specs.append(ParamSpec(path, rel_sigma=float(sig) if sig else 0.10))
+    else:
+        from harness.schema import load_yaml
+        from harness.sensitivity import _get_dotted
+
+        data = load_yaml(Path(case_yaml))
+        candidates = [
+            ("boundary_conditions.heater.power_kw", 0.10),
+            ("boundary_conditions.heater.convective_fraction", 0.10),
+            ("boundary_conditions.walls.conductivity", 0.20),
+            ("boundary_conditions.walls.thickness", 0.20),
+            ("boundary_conditions.walls.h_natural", 0.20),
+        ]
+        specs = []
+        for path, sig in candidates:
+            try:
+                _get_dotted(data, path)
+            except (KeyError, TypeError):
+                continue
+            specs.append(ParamSpec(path, rel_sigma=sig))
+        if not specs:
+            click.echo("No default parameters present in case; use --param.", err=True)
+            raise SystemExit(1)
+
+    case = Path(case_yaml)
+    click.echo(f"Running sensitivity over {len(specs)} parameters...")
+    sens = local_sensitivities(case, specs, max_iter=max_iter)
+    bands = propagate_uncertainty(case, specs, max_iter=max_iter, sens=sens)
+    md = sensitivity_report_markdown(sens, bands)
+    click.echo(md)
+    if output:
+        Path(output).write_text(md, encoding="utf-8")
+        click.echo(f"\nReport saved to {output}")
+
+
 if __name__ == "__main__":
     main()

@@ -34,6 +34,35 @@ class TestComputeK01:
         assert result.pass_fail == "fail"
 
 
+class TestK01PlausibilityBand:
+    """C6: K-01 pass requires a non-trivial, plausible stratification band."""
+
+    def test_well_mixed_below_band_fails(self) -> None:
+        r = compute_k01(upper_temp=301.0, lower_temp=300.0)  # 1 K < 2 K
+        assert r.pass_fail == "fail"
+        assert r.note is not None and "well-mixed" in r.note
+
+    def test_implausibly_large_fails_with_note(self) -> None:
+        r = compute_k01(upper_temp=400.0, lower_temp=300.0)  # 100 K > 80 K
+        assert r.pass_fail == "fail"
+        assert r.note is not None and "implausible" in r.note
+
+    def test_in_band_passes_no_note(self) -> None:
+        r = compute_k01(upper_temp=353.0, lower_temp=323.0)  # 30 K
+        assert r.pass_fail == "pass"
+        assert r.note is None
+
+
+class TestK05Honesty:
+    """C6: K-05 is a labelled proxy, not a validated prediction."""
+
+    def test_proxy_has_no_passfail_but_has_note(self) -> None:
+        r = compute_k05(0.5)
+        assert r.value > 0
+        assert r.pass_fail is None
+        assert r.note is not None and "proxy" in r.note
+
+
 class TestComputeK07:
     def test_relative_difference(self) -> None:
         result = compute_k07(upper_temp=360.0, lower_temp=320.0)

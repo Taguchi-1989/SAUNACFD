@@ -365,6 +365,7 @@ def _ventilation_flow(
 
 def _humid_air_properties(
     t_k: float, humidity_ratio: float = 0.0, q_rad_body: float = 0.0,
+    h_wall_base: float = 8.0,
 ) -> dict[str, float]:
     """Compute humid air mixture properties.
 
@@ -372,6 +373,8 @@ def _humid_air_properties(
         t_k: Temperature [K].
         humidity_ratio: kg water vapor per kg dry air (absolute humidity).
         q_rad_body: Direct radiative heat flux on body [W/m2] (from heater).
+        h_wall_base: Base natural-convection wall HTC for dry air [W/(m2*K)];
+            scaled by the humidity-dependent factor to give h_wall_eff.
 
     Returns:
         dict with cp_mix, lambda_mix, h_wall_eff, perceived_temp_c, etc.
@@ -394,7 +397,7 @@ def _humid_air_properties(
     # natural convection (Ra ∝ β * ΔT * cp * ρ² / (μ * λ))
     # Simplified: h scales roughly as (cp_mix / cp_air)^0.25 * (lambda_mix / lambda_air)^0.75
     h_ratio = (cp_mix / cp_air) ** 0.25 * (lambda_mix / lambda_air) ** 0.75
-    h_wall_eff = 8.0 * h_ratio
+    h_wall_eff = h_wall_base * h_ratio
 
     t_c = t_k - 273.15
     # Antoine equation for saturation pressure [Pa] at T [K]
@@ -746,8 +749,9 @@ def solve_two_zone(
     vent_cfg = data.get("ventilation")
     vent_enabled = vent_cfg is not None and vent_cfg.get("model", "none") != "none"
 
-    # Convective fraction of heater output (rest is radiant to walls)
-    f_conv = 0.7
+    # Convective fraction of heater output (rest is radiant to walls).
+    # Configurable via heater.convective_fraction (default 0.7).
+    f_conv = heater.get("convective_fraction", 0.7)
     q_conv = power_w * f_conv
 
     # Air properties
@@ -759,7 +763,8 @@ def solve_two_zone(
     wall_thickness = walls.get("thickness", 0.015)  # wood panel [m]
     wall_lambda = walls.get("conductivity", 0.12)  # wood thermal conductivity [W/(m*K)]
     wall_rho_cp = walls.get("rho_cp", 0.5e6)  # wood volumetric heat capacity [J/(m3*K)] (rho=450,cp=1100)
-    h_wall_base = 8.0  # base natural convection HTC [W/(m2*K)]
+    # Base natural-convection wall HTC [W/(m2*K)]; configurable via walls.h_natural.
+    h_wall_base = walls.get("h_natural", 8.0)
 
     perimeter = 2 * (width + depth)
 
@@ -808,7 +813,7 @@ def solve_two_zone(
         )
 
         # --- Humidity-dependent properties ---
-        props = _humid_air_properties(t_upper, humidity_ratio)
+        props = _humid_air_properties(t_upper, humidity_ratio, h_wall_base=h_wall_base)
         h_wall = props["h_wall_eff"]
         cp_eff = props["cp_mix"]
 
@@ -1086,7 +1091,7 @@ def solve_transient(
     vent_cfg = data.get("ventilation")
     vent_enabled = vent_cfg is not None and vent_cfg.get("model", "none") != "none"
 
-    f_conv = 0.7
+    f_conv = heater.get("convective_fraction", 0.7)
     q_conv = power_w * f_conv
 
     rho_0 = 1.1
@@ -1102,6 +1107,7 @@ def solve_transient(
     wall_thickness = walls.get("thickness", 0.015)
     wall_lambda = walls.get("conductivity", 0.12)
     wall_rho_cp = walls.get("rho_cp", 0.5e6)
+    h_wall_base = walls.get("h_natural", 8.0)  # base natural convection HTC [W/(m2*K)]
 
     perimeter = 2 * (width + depth)
 
@@ -1180,7 +1186,7 @@ def solve_transient(
         )
 
         # Humidity-dependent properties
-        props = _humid_air_properties(t_upper, humidity_ratio)
+        props = _humid_air_properties(t_upper, humidity_ratio, h_wall_base=h_wall_base)
         h_wall = props["h_wall_eff"]
         cp_eff = props["cp_mix"]
 
@@ -1231,10 +1237,12 @@ def solve_transient(
 
                 # Sensible heat carried by the hot steam INTO the air.
                 # The vapor leaves the wet stones well above room-air
-                # temperature, depositing sensible enthalpy (sourced from the
-                # stones) on top of the humidity rise. This is what produces the
-                # brief post-löyly dry-bulb temperature peak that KPIs K-02/K-04
-                # are meant to capture; without it the steam was thermally inert.
+                # temperature, depositing sensible enthalpy on top of the
+                # humidity rise. This produces the brief post-löyly dry-bulb peak
+                # that KPIs K-02/K-04 are meant to capture; without it the steam
+                # was thermally inert. NOTE: the stone heat reservoir is not a
+                # tracked state, so this term is an un-debited source — small
+                # (sensible << latent) and bounded, acceptable for the ROM.
                 if steam_temp_k > t_upper:
                     q_steam_sensible = mass_evap * CP_VAPOR * (steam_temp_k - t_upper)
                     t_upper += q_steam_sensible / (m_upper * cp_eff)
