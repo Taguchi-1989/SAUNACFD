@@ -140,6 +140,28 @@ class TestKPI_K05:
         result = compute_k05(0.0)
         assert result.value == 0.0
 
+    def test_jet_velocity_preferred_over_proxy(self) -> None:
+        """When a free-jet face velocity is given, K-05 reports it (not proxy)."""
+        result = compute_k05(0.5, face_velocity=1.86)
+        assert result.value == 1.86
+        assert "free-jet" in result.name
+        assert result.pass_fail == "pass"  # >= 0.2 m/s perceptible
+        assert result.note is not None and "free-jet" in result.note
+
+    def test_jet_below_perceptible_fails(self) -> None:
+        result = compute_k05(0.5, face_velocity=0.05)
+        assert result.pass_fail == "fail"
+
+    def test_evaluate_all_uses_face_velocity(self) -> None:
+        results = evaluate_all_kpis(
+            probe_values={"upper_bench": 360.0, "lower_bench": 340.0},
+            beta_aug=0.5,
+            aufguss_face_velocity=1.5,
+        )
+        k05 = next(r for r in results if r.kpi_id == "K-05")
+        assert k05.value == 1.5
+        assert "free-jet" in k05.name
+
 
 class TestKPI_K06:
     def test_comfortable(self) -> None:

@@ -130,6 +130,7 @@ def run_batch(
             probe_values=result.probe_values,
             perceived_temp_c=result.perceived_temp_upper,
             beta_aug=result.beta_aug_applied,
+            aufguss_face_velocity=result.aufguss_face_velocity,
         )
 
         cases.append(BatchCaseResult(

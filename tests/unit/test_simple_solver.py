@@ -524,6 +524,18 @@ class TestSteadyAufgussWarning:
             solve_two_zone(path, max_iter=2000)
         assert not any("Aufguss" in str(c.message) for c in caught)
 
+    def test_aufguss_face_velocity_populated(self, tmp_path: Path) -> None:
+        """K-05 free-jet face velocity is set when Aufguss is active, else 0."""
+        import warnings as _w
+        with _w.catch_warnings():
+            _w.simplefilter("ignore")
+            r_aug = solve_two_zone(_write_aufguss_yaml(tmp_path, beta_aug=0.5), max_iter=2000)
+        # defaults jet_velocity=2.0, d0=0.15, x=1.0 -> 2.0*6.2*0.15/1.0 = 1.86
+        assert abs(r_aug.aufguss_face_velocity - 1.86) < 1e-6
+        (tmp_path / "dry").mkdir()
+        r_dry = solve_two_zone(_write_case_yaml(tmp_path / "dry"), max_iter=2000)
+        assert r_dry.aufguss_face_velocity == 0.0
+
 
 class TestViewFactors:
     def test_view_factors_sum_reasonable(self) -> None:

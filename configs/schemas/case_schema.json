@@ -246,7 +246,9 @@
         "beta_aug": {"type": "number", "minimum": 0, "description": "Forced mixing coefficient [kg/s] from CFD ROM"},
         "start_time": {"type": "number", "minimum": 0, "description": "Aufguss start time [s]"},
         "duration": {"type": "number", "minimum": 0, "default": 30.0, "description": "Aufguss duration [s]"},
-        "jet_velocity": {"type": "number", "minimum": 0, "default": 2.0, "description": "Jet velocity for OpenFOAM momentum source [m/s]"}
+        "jet_velocity": {"type": "number", "minimum": 0, "default": 2.0, "description": "Jet exit velocity U0 [m/s] (OpenFOAM momentum source; also free-jet source velocity for KPI K-05)"},
+        "jet_diameter": {"type": "number", "exclusiveMinimum": 0, "default": 0.15, "description": "Characteristic jet source diameter d0 [m] for the free-jet face-velocity model (K-05)"},
+        "face_distance": {"type": "number", "exclusiveMinimum": 0, "default": 1.0, "description": "Distance from the Aufguss source to the face [m] for the free-jet model (K-05)"}
       },
       "required": ["beta_aug"],
       "additionalProperties": false

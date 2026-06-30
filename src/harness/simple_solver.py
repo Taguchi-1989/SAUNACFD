@@ -30,6 +30,7 @@ import math
 
 import numpy as np
 
+from harness.jet import free_jet_face_velocity
 from harness.schema import load_yaml
 
 
@@ -51,6 +52,7 @@ class SimpleSolverResult:
     steam_mass_flow: float = 0.0      # peak evaporation rate [kg/s]
     total_steam_generated: float = 0.0 # cumulative steam mass [kg]
     beta_aug_applied: float = 0.0  # forced mixing coefficient used [kg/s]
+    aufguss_face_velocity: float = 0.0  # free-jet face wind speed during Aufguss [m/s]
     vent_mass_flow: float = 0.0        # ventilation mass flow rate [kg/s]
     wall_inner_temp: float = 293.15    # inner wall surface temperature [K]
     humidity_ratio: float = 0.0        # kg vapor / kg dry air
@@ -621,6 +623,7 @@ def _make_simple_result(
     vent_mass_flow: float = 0.0,
     energy: dict[str, float] | None = None,
     clamp_active: bool = False,
+    aufguss_face_velocity: float = 0.0,
 ) -> SimpleSolverResult:
     """Assemble a ``SimpleSolverResult`` from the current zone state."""
     energy = energy or {}
@@ -655,6 +658,7 @@ def _make_simple_result(
         steam_mass_flow=float(peak_steam_rate),
         total_steam_generated=float(total_steam),
         beta_aug_applied=float(beta_aug_applied),
+        aufguss_face_velocity=float(aufguss_face_velocity),
         vent_mass_flow=float(vent_mass_flow),
         wall_inner_temp=float(t_wall_inner),
         humidity_ratio=float(humidity_ratio),
@@ -756,6 +760,17 @@ def solve_two_zone(
         aufguss_start = 0.0
         aufguss_duration = 0.0
 
+    # Free-jet face wind speed (KPI K-05): centerline velocity of the Aufguss
+    # jet at the face, from its exit velocity / source size / distance — only
+    # when Aufguss is active (beta_aug > 0).
+    if aufguss and beta_aug > 0:
+        aufguss_face_velocity = free_jet_face_velocity(
+            aufguss.get("jet_velocity", 2.0),
+            aufguss.get("jet_diameter", 0.15),
+            aufguss.get("face_distance", 1.0),
+        )
+    else:
+        aufguss_face_velocity = 0.0
 
     # Ventilation parameters
     vent_cfg = data.get("ventilation")
@@ -1024,6 +1039,7 @@ def solve_two_zone(
         vent_mass_flow=m_vent if vent_enabled else 0.0,
         energy=energy,
         clamp_active=clamp_flag,
+        aufguss_face_velocity=aufguss_face_velocity,
     )
 
 
@@ -1392,6 +1408,15 @@ def solve_transient(
     aufguss_end = aufguss_start + aufguss_duration
     aufguss_was_active = beta_aug > 0 and aufguss_start < end_time and aufguss_end > 0
     beta_aug_applied = beta_aug if aufguss_was_active else 0.0
+    # Free-jet face wind speed (KPI K-05), reported only when Aufguss was active.
+    if aufguss_was_active and aufguss:
+        aufguss_face_velocity = free_jet_face_velocity(
+            aufguss.get("jet_velocity", 2.0),
+            aufguss.get("jet_diameter", 0.15),
+            aufguss.get("face_distance", 1.0),
+        )
+    else:
+        aufguss_face_velocity = 0.0
 
     # Use time-averaged values from the last 25% of the simulation for summary,
     # rather than instantaneous final values which can be noisy.
@@ -1459,6 +1484,7 @@ def solve_transient(
         vent_mass_flow=m_vent if vent_enabled else 0.0,
         energy=energy,
         clamp_active=clamp_flag,
+        aufguss_face_velocity=aufguss_face_velocity,
     )
 
     return TransientResult(
