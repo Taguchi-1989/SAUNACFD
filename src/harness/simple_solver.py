@@ -81,19 +81,24 @@ class TransientResult:
     steady_result: SimpleSolverResult
 
 
-def _compute_view_factors(
+def _radiant_distribution(
     room_w: float, room_d: float, room_h: float,
     heater_y: float, heater_h: float, heater_w: float,
 ) -> dict[str, float]:
-    """Compute approximate view factors from heater to room surfaces.
+    """Approximate radiant-output distribution from the heater to room surfaces.
 
-    Uses solid-angle fractions from the heater centroid to each surface.
-    A heater near the floor radiates more downward; near the ceiling,
-    more upward. The opposite wall receives radiation based on the
-    heater's angular extent.
+    These are NOT reciprocity-satisfying radiation view factors and are not a
+    substitute for a radiosity/enclosure solve. They are a crude solid-angle
+    *distribution* of the heater's radiant output: fractions from the heater
+    centroid to each surface, normalised to sum to ~1.0 (closure only —
+    reciprocity F_ij A_i = F_ji A_j is NOT enforced). A heater near the floor
+    weights downward; near the ceiling, upward.
 
-    Returns dict with keys: 'floor', 'lower_walls', 'upper_walls',
-    'ceiling', 'body'.  All values sum to ~1.0 (enclosure closure rule).
+    In the current physics only the 'body' fraction is consumed (heater→body
+    radiative flux for perceived temperature); the wall/floor/ceiling fractions
+    are informational/diagnostic, since radiation is delivered to the walls as a
+    whole by the lumped wall model. Returns keys: 'floor', 'lower_walls',
+    'upper_walls', 'ceiling', 'body'.
     """
     h_center = heater_y + heater_h / 2.0
 
@@ -167,6 +172,11 @@ def _compute_view_factors(
         "ceiling": float(np.clip(f_ceiling_raw, 0.01, 0.6)) * scale_walls,
         "body": f_body,
     }
+
+
+# Backward-compatible alias. The old name overstated these as "view factors";
+# kept so existing imports keep working. Prefer _radiant_distribution.
+_compute_view_factors = _radiant_distribution
 
 
 def _plume_entrainment(
@@ -440,7 +450,7 @@ def _q_rad_body(
     Args:
         power_w: Total heater power [W].
         f_conv: Convective fraction of heater output (rest is radiant).
-        f_body: View factor from heater to body (from _compute_view_factors).
+        f_body: Heater-to-body radiant fraction (from _radiant_distribution).
         heater_w: Heater width [m].
         heater_h: Heater height [m].
         t_wall_inner_k: Inner wall surface temperature [K] (used as ambient
@@ -704,10 +714,12 @@ def solve_two_zone(
     heater_w = heater.get("width", 0.6)
 
     # View factor radiation model
-    vf = _compute_view_factors(width, depth, height, heater_y, heater_h, heater_w)
-    f_rad_lower = vf["floor"] + vf["lower_walls"]
-    f_rad_upper = vf["ceiling"] + vf["upper_walls"]
-    f_body = vf["body"]
+    # Heater-to-body radiant fraction (for perceived temperature). The wall/floor
+    # distribution is no longer used by the energy balance: radiation heats the
+    # walls (lumped model) rather than the air, so only f_body is consumed here.
+    f_body = _radiant_distribution(
+        width, depth, height, heater_y, heater_h, heater_w,
+    )["body"]
 
     # Löyly (steam) parameters
     loyly = data.get("loyly")
@@ -759,7 +771,10 @@ def solve_two_zone(
     cp = 1005.0
 
     # Wall thermal model
-    wall_cfg = walls.get("model", "fixed")  # "fixed" or "lumped"
+    # Default to the physical lumped wall model. "fixed" holds walls at a
+    # constant temperature (a convection-only limiting case; radiation is lost
+    # to the sink rather than warming the room).
+    wall_cfg = walls.get("model", "lumped")
     wall_thickness = walls.get("thickness", 0.015)  # wood panel [m]
     wall_lambda = walls.get("conductivity", 0.12)  # wood thermal conductivity [W/(m*K)]
     wall_rho_cp = walls.get("rho_cp", 0.5e6)  # wood volumetric heat capacity [J/(m3*K)] (rho=450,cp=1100)
@@ -839,8 +854,12 @@ def solve_two_zone(
         # Radiative loss from heater to walls (non-convective fraction)
         q_rad_to_walls = power_w * (1.0 - f_conv)
 
-        # Radiation to upper zone (fixed wall: direct to air; lumped: via wall model)
-        q_rad_to_upper = 0.0 if wall_cfg == "lumped" else q_rad_to_walls * f_rad_upper
+        # Air is nearly transparent to thermal IR, so heater radiation never
+        # heats the air directly. It is delivered to the walls: with the lumped
+        # wall model the wall heats up and convects back to the air; with fixed
+        # (constant-T) walls the radiant fraction is absorbed by the sink and
+        # does not warm the room (fixed mode is a convection-only limiting case).
+        q_rad_to_upper = 0.0
 
         m_upper = rho_upper * v_upper
         dt_upper = (q_plume_in - q_wall_upper + q_vent_upper + q_rad_to_upper) / (m_upper * cp_eff) if m_upper > 0.1 else 0.0
@@ -888,11 +907,7 @@ def solve_two_zone(
 
         m_lower = rho_lower * v_lower
         if m_lower > 0.1:
-            # Radiation path depends on wall model:
-            # - lumped: all radiation heats walls, then conducts/convects to air
-            #   → no direct q_rad to air (handled by wall model)
-            # - fixed: radiation goes directly to air (no wall dynamics)
-            q_rad_to_lower = 0.0 if wall_cfg == "lumped" else q_rad_to_walls * f_rad_lower
+            q_rad_to_lower = 0.0  # see q_rad_to_upper: radiation heats walls, not air
             dt_lower = (q_rad_to_lower + q_interface - q_wall_lower + q_vent_lower) / (m_lower * cp_eff)
         else:
             dt_lower = 0.0
@@ -1054,10 +1069,12 @@ def solve_transient(
 
     heater_w = heater.get("width", 0.6)
 
-    vf = _compute_view_factors(width, depth, height, heater_y, heater_h, heater_w)
-    f_rad_lower = vf["floor"] + vf["lower_walls"]
-    f_rad_upper = vf["ceiling"] + vf["upper_walls"]
-    f_body = vf["body"]
+    # Heater-to-body radiant fraction (for perceived temperature). The wall/floor
+    # distribution is no longer used by the energy balance: radiation heats the
+    # walls (lumped model) rather than the air, so only f_body is consumed here.
+    f_body = _radiant_distribution(
+        width, depth, height, heater_y, heater_h, heater_w,
+    )["body"]
 
     # Loyly parameters
     loyly = data.get("loyly")
@@ -1103,7 +1120,7 @@ def solve_transient(
     P_ATM = 101325.0
     CP_VAPOR = 1860.0  # specific heat of water vapor [J/(kg*K)]
 
-    wall_cfg = walls.get("model", "fixed")
+    wall_cfg = walls.get("model", "lumped")  # physical default; see solve_two_zone
     wall_thickness = walls.get("thickness", 0.015)
     wall_lambda = walls.get("conductivity", 0.12)
     wall_rho_cp = walls.get("rho_cp", 0.5e6)
@@ -1211,8 +1228,12 @@ def solve_transient(
 
         q_rad_to_walls = power_w * (1.0 - f_conv)
 
-        # Radiation to upper zone (fixed wall: direct to air; lumped: via wall model)
-        q_rad_to_upper = 0.0 if wall_cfg == "lumped" else q_rad_to_walls * f_rad_upper
+        # Air is nearly transparent to thermal IR, so heater radiation never
+        # heats the air directly. It is delivered to the walls: with the lumped
+        # wall model the wall heats up and convects back to the air; with fixed
+        # (constant-T) walls the radiant fraction is absorbed by the sink and
+        # does not warm the room (fixed mode is a convection-only limiting case).
+        q_rad_to_upper = 0.0
 
         m_upper = rho_upper * v_upper
         dt_upper = (q_plume_in - q_wall_upper + q_vent_upper + q_rad_to_upper) / (m_upper * cp_eff) if m_upper > 0.1 else 0.0
@@ -1272,7 +1293,7 @@ def solve_transient(
 
         m_lower = rho_lower * v_lower
         if m_lower > 0.1:
-            q_rad_to_lower = 0.0 if wall_cfg == "lumped" else q_rad_to_walls * f_rad_lower
+            q_rad_to_lower = 0.0  # see q_rad_to_upper: radiation heats walls, not air
             dt_lower = (q_rad_to_lower + q_interface - q_wall_lower + q_vent_lower) / (m_lower * cp_eff)
         else:
             dt_lower = 0.0

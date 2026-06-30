@@ -55,7 +55,7 @@
           "properties": {
             "temperature": { "type": "number" },
             "type": { "type": "string", "enum": ["fixed", "adiabatic", "mixed"] },
-            "model": { "type": "string", "enum": ["fixed", "lumped"], "default": "fixed", "description": "Wall thermal model: fixed=constant T, lumped=wall heats up" },
+            "model": { "type": "string", "enum": ["fixed", "lumped"], "default": "lumped", "description": "Wall thermal model: lumped=wall heats up and convects back (physical default); fixed=constant-T sink (convection-only limiting case, radiation lost)" },
             "thickness": { "type": "number", "exclusiveMinimum": 0, "default": 0.015, "description": "Wall panel thickness [m]" },
             "conductivity": { "type": "number", "exclusiveMinimum": 0, "default": 0.12, "description": "Wall thermal conductivity [W/(m*K)]" },
             "rho_cp": { "type": "number", "exclusiveMinimum": 0, "default": 500000, "description": "Wall volumetric heat capacity [J/(m3*K)]" },
