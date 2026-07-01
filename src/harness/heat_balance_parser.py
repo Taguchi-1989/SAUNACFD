@@ -32,6 +32,18 @@ _HEATER_PATCHES = {"heater_wall"}
 _VENT_PATCHES = {"supply_vent", "exhaust_vent"}
 
 
+def time_dir_key(path: Path) -> tuple[float, str]:
+    """Sort key for OpenFOAM time directories (numeric, not lexicographic).
+
+    Lexicographic sorting puts "900" after "1000", so ``sorted(...)[-1]``
+    would pick an older time directory. Non-numeric names sort last by name.
+    """
+    try:
+        return (float(path.name), path.name)
+    except ValueError:
+        return (float("inf"), path.name)
+
+
 def parse_wall_heat_flux(case_dir: Path) -> dict[str, list[tuple[float, float]]]:
     """Parse wallHeatFlux postProcessing output.
 
@@ -44,7 +56,7 @@ def parse_wall_heat_flux(case_dir: Path) -> dict[str, list[tuple[float, float]]]
 
     result: dict[str, list[tuple[float, float]]] = {}
 
-    for time_dir in sorted(pp_dir.iterdir()):
+    for time_dir in sorted(pp_dir.iterdir(), key=time_dir_key):
         if not time_dir.is_dir():
             continue
 
@@ -143,7 +155,7 @@ def parse_vol_average_t(case_dir: Path) -> list[tuple[float, float]]:
         return []
 
     entries: list[tuple[float, float]] = []
-    for time_dir in sorted(pp_dir.iterdir()):
+    for time_dir in sorted(pp_dir.iterdir(), key=time_dir_key):
         if not time_dir.is_dir():
             continue
         dat_file = time_dir / "volFieldValue.dat"
@@ -161,10 +173,13 @@ def compute_heat_balance(
 
     Uses the last time step values from each patch.
     """
+    # Take the value at the LATEST time, not the last list entry: restart
+    # time directories can overlap, so concatenated series are not
+    # guaranteed to be chronological.
     patch_last: dict[str, float] = {}
     for patch, series in wall_fluxes.items():
         if series:
-            patch_last[patch] = series[-1][1]
+            patch_last[patch] = max(series, key=lambda tv: tv[0])[1]
 
     _skip = _HEATER_PATCHES | _VENT_PATCHES | {"total"}
     heater_input = sum(v for k, v in patch_last.items() if k in _HEATER_PATCHES)
@@ -174,7 +189,7 @@ def compute_heat_balance(
         if k not in _skip
     )
 
-    avg_t = vol_avg_t[-1][1] if vol_avg_t else 0.0
+    avg_t = max(vol_avg_t, key=lambda tv: tv[0])[1] if vol_avg_t else 0.0
 
     return HeatBalance(
         heater_input_W=heater_input,

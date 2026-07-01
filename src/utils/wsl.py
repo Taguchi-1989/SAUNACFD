@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import subprocess
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 
 class OpenFOAMError(RuntimeError):
@@ -14,14 +14,19 @@ def win_to_wsl_path(win_path: Path) -> str:
     """Convert a Windows path to a WSL path.
 
     Example: D:\\dev\\SaunaFEM → /mnt/d/dev/SaunaFEM
+
+    Parses with PureWindowsPath so the conversion also works when the
+    harness itself runs on a POSIX host (Linux/CI), where ``pathlib.Path``
+    has no notion of Windows drive letters (and ``resolve()`` would mangle
+    the path against the POSIX cwd).
     """
-    resolved = Path(win_path).resolve()
-    drive = resolved.drive  # e.g. "D:"
-    if not drive:
+    pwp = PureWindowsPath(str(win_path))
+    drive = pwp.drive  # e.g. "D:"
+    if len(drive) != 2 or drive[1] != ":" or not drive[0].isalpha():
         raise ValueError(f"Cannot convert path without drive letter: {win_path}")
     letter = drive[0].lower()
-    remainder = resolved.as_posix()[len(drive):]  # strip "D:" prefix
-    return f"/mnt/{letter}{remainder}"
+    remainder = "/".join(pwp.parts[1:])
+    return f"/mnt/{letter}/{remainder}" if remainder else f"/mnt/{letter}"
 
 
 def wsl_to_win_path(wsl_path: str) -> Path:

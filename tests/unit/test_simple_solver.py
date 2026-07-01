@@ -90,6 +90,17 @@ class TestPlumeEntrainment:
         m, t = _plume_entrainment(0.0, 1.0, 293.15)
         assert m == 0.0
 
+    def test_temp_bounded_for_tiny_mass_flow(self) -> None:
+        """Near-source (tiny m_dot) plume temperature must stay bounded.
+
+        The raw energy balance diverges as m_dot -> 0; the solver floors the
+        denominator at 0.01 kg/s, so the excess temperature can never exceed
+        q / (0.01 * cp).
+        """
+        q = 500.0
+        _, t = _plume_entrainment(q, 0.02, 293.15, heater_diameter=0.05)
+        assert t - 293.15 <= q / (0.01 * 1005.0) + 1e-9
+
 
 class TestSolveTwoZone:
     def test_converges(self, tmp_path: Path) -> None:

@@ -73,7 +73,9 @@ def time_average(
     masked_v = values[mask]
     # Use trapezoidal integration for proper time-weighting
     if len(masked_t) > 1 and (masked_t[-1] - masked_t[0]) > 1e-10:
-        _trapezoid = getattr(np, "trapezoid", np.trapz)
+        # np.trapz was removed in NumPy 2.0 (renamed np.trapezoid); a plain
+        # getattr default of np.trapz would be evaluated eagerly and raise.
+        _trapezoid = np.trapezoid if hasattr(np, "trapezoid") else np.trapz
         return float(_trapezoid(masked_v, masked_t) / (masked_t[-1] - masked_t[0]))
     return float(np.mean(masked_v))
 

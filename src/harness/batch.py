@@ -5,7 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from harness.heat_balance_parser import HeatBalance, compute_heat_balance, parse_vol_average_t, parse_wall_heat_flux
+from harness.heat_balance_parser import (
+    HeatBalance,
+    compute_heat_balance,
+    parse_vol_average_t,
+    parse_wall_heat_flux,
+    time_dir_key,
+)
 from harness.kpi import KPIResult, evaluate_all_kpis
 from harness.probe_parser import parse_probe_file, get_steady_state_values
 from harness.simple_solver import SimpleSolverResult, solve_two_zone
@@ -173,8 +179,11 @@ def parse_openfoam_case(
     # Parse probes
     probe_values: dict[str, float] = {}
     probe_ts: dict[str, list[tuple[float, float]]] = {}
+    # Numeric sort: lexicographic order would rank "900" after "1000" and
+    # pick a stale time directory as the "latest".
     probe_dirs = sorted(
         (case_dir / "postProcessing" / "probes").glob("[0-9]*"),
+        key=time_dir_key,
     ) if (case_dir / "postProcessing" / "probes").exists() else []
 
     if probe_dirs:
