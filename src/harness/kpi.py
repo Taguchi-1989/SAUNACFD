@@ -124,16 +124,37 @@ def compute_k04(
     )
 
 
-def compute_k05(beta_aug: float, rho: float = 0.9, a_face: float = 0.05) -> KPIResult:
-    """K-05: Face-level wind speed proxy from the Aufguss mixing coefficient.
+# Face air speed [m/s] above which an Aufguss gust is clearly perceptible.
+K05_PERCEPTIBLE_MPS = 0.2
 
-    ``v ~ beta_aug / (rho * A_face)``. This is an **order-of-magnitude proxy,
-    not a prediction**: ``beta_aug`` is a user-supplied mixing rate and the face
-    area is assumed, so the output is essentially a linear rescale of an input
-    knob. It is reported (no pass/fail) so the value is not mistaken for a
-    validated wind speed. A real face velocity needs a jet/momentum source
-    model (towel throw geometry, nozzle area, decay), tracked as future work.
+
+def compute_k05(
+    beta_aug: float,
+    face_velocity: float | None = None,
+    rho: float = 0.9,
+    a_face: float = 0.05,
+) -> KPIResult:
+    """K-05: Face-level wind speed during Aufguss.
+
+    Preferred: ``face_velocity`` from the free-jet centerline model
+    (``harness.jet.free_jet_face_velocity`` — exit velocity, source size, and
+    distance to the face). This is a physics-based estimate, so it gets a
+    perceptibility pass/fail (>= 0.2 m/s = clearly felt).
+
+    Fallback: if no jet-derived velocity is available, an order-of-magnitude
+    proxy ``v ~ beta_aug / (rho * A_face)`` is reported with no pass/fail and a
+    note — this is just a rescale of the mixing coefficient, not a prediction.
     """
+    if face_velocity is not None and face_velocity > 0.0:
+        return KPIResult(
+            kpi_id="K-05",
+            name="Face-level wind speed (free-jet)",
+            value=round(face_velocity, 2),
+            unit="m/s",
+            pass_fail="pass" if face_velocity >= K05_PERCEPTIBLE_MPS else "fail",
+            note="round free-jet centerline decay (U0, d0, distance)",
+        )
+
     v_proxy = beta_aug / (rho * a_face) if beta_aug > 0 else 0.0
     return KPIResult(
         kpi_id="K-05",
@@ -143,7 +164,9 @@ def compute_k05(beta_aug: float, rho: float = 0.9, a_face: float = 0.05) -> KPIR
         pass_fail=None,
         note=(
             f"order-of-magnitude proxy: linear in beta_aug "
-            f"(rho={rho:g}, A_face={a_face:g} m^2 assumed); not a jet model"
+            f"(rho={rho:g}, A_face={a_face:g} m^2 assumed); not a jet model. "
+            f"Provide aufguss.jet_velocity/jet_diameter/face_distance for the "
+            f"free-jet estimate."
         ),
     )
 
@@ -194,6 +217,7 @@ def evaluate_all_kpis(
     event_time: float = 0.0,
     beta_aug: float = 0.0,
     perceived_temp_c: float = 0.0,
+    aufguss_face_velocity: float = 0.0,
 ) -> list[KPIResult]:
     """Compute all available KPIs."""
     upper = probe_values.get("upper_bench", 0.0)
@@ -210,8 +234,9 @@ def evaluate_all_kpis(
         results.append(compute_k03(humidity_series))
     if time_series is not None and t_upper_series is not None:
         results.append(compute_k04(time_series, t_upper_series, event_time))
-    if beta_aug > 0:
-        results.append(compute_k05(beta_aug))
+    if beta_aug > 0 or aufguss_face_velocity > 0:
+        face_vel = aufguss_face_velocity if aufguss_face_velocity > 0 else None
+        results.append(compute_k05(beta_aug, face_velocity=face_vel))
     if perceived_temp_c > 0:
         results.append(compute_k06(perceived_temp_c))
 
