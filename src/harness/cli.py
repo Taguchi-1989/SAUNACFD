@@ -127,7 +127,16 @@ def report(case_dir: str, case_yaml: str) -> None:
     if t_upper_series:
         baseline_temp = t_upper_series[0]
 
-    beta_aug = data.get("aufguss", {}).get("beta_aug", 0.0)
+    aufguss_cfg = data.get("aufguss", {})
+    beta_aug = aufguss_cfg.get("beta_aug", 0.0)
+    aufguss_face_velocity = 0.0
+    if beta_aug > 0:
+        from harness.jet import free_jet_face_velocity
+        aufguss_face_velocity = free_jet_face_velocity(
+            aufguss_cfg.get("jet_velocity", 2.0),
+            aufguss_cfg.get("jet_diameter", 0.15),
+            aufguss_cfg.get("face_distance", 1.0),
+        )
 
     # Compute perceived temperature accounting for humidity
     t_upper_k = values.get("upper_bench", 293.15)
@@ -147,6 +156,7 @@ def report(case_dir: str, case_yaml: str) -> None:
         event_time=float(data.get("loyly", {}).get("time", 0.0)),
         beta_aug=beta_aug,
         perceived_temp_c=perceived_temp_c,
+        aufguss_face_velocity=aufguss_face_velocity,
     )
     click.echo("\nKPI Results:")
     for kpi in kpis:

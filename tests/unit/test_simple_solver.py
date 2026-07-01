@@ -11,6 +11,7 @@ from harness.simple_solver import (
     TransientResult,
     _clamp_active,
     _compute_view_factors,
+    _radiant_distribution,
     _energy_balance,
     _evaporation_rate,
     _perceived_temperature,
@@ -414,6 +415,46 @@ class TestLoylySensibleHeat:
         assert excess < 15.0, f"sensible bump implausibly large ({excess:.1f} K) — latent leak?"
 
 
+class TestRadiationModel:
+    """C9/C4: lumped is the default; radiation never heats air directly."""
+
+    def _case(self, tmp_path: Path, model: str | None) -> Path:
+        path = _write_case_yaml(tmp_path)
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if model is None:
+            data["boundary_conditions"]["walls"].pop("model", None)
+        else:
+            data["boundary_conditions"]["walls"]["model"] = model
+        path.write_text(yaml.dump(data), encoding="utf-8")
+        return path
+
+    def test_default_wall_model_is_lumped(self, tmp_path: Path) -> None:
+        """A case omitting walls.model behaves like explicit lumped, not fixed."""
+        (tmp_path / "def").mkdir()
+        (tmp_path / "lump").mkdir()
+        (tmp_path / "fix").mkdir()
+        r_default = solve_two_zone(self._case(tmp_path / "def", None), max_iter=4000)
+        r_lumped = solve_two_zone(self._case(tmp_path / "lump", "lumped"), max_iter=4000)
+        r_fixed = solve_two_zone(self._case(tmp_path / "fix", "fixed"), max_iter=4000)
+        assert abs(r_default.upper_layer_temp - r_lumped.upper_layer_temp) < 1e-6
+        assert abs(r_default.upper_layer_temp - r_fixed.upper_layer_temp) > 1.0
+
+    def test_fixed_mode_has_no_radiant_air_heating(self, tmp_path: Path) -> None:
+        """Fixed (constant-T) walls lose the radiant fraction, so the room is
+        cooler than the lumped model where walls re-warm the air."""
+        (tmp_path / "lump").mkdir()
+        (tmp_path / "fix").mkdir()
+        r_lumped = solve_two_zone(self._case(tmp_path / "lump", "lumped"), max_iter=4000)
+        r_fixed = solve_two_zone(self._case(tmp_path / "fix", "fixed"), max_iter=4000)
+        assert r_fixed.upper_layer_temp < r_lumped.upper_layer_temp
+
+    def test_radiant_distribution_alias_and_closure(self) -> None:
+        assert _compute_view_factors is _radiant_distribution
+        d = _radiant_distribution(3.0, 2.5, 2.5, 0.1, 0.5, 0.6)
+        assert "body" in d
+        assert 0.8 <= sum(d.values()) <= 1.2  # closure (not reciprocity)
+
+
 class TestParameterization:
     """Newly YAML-exposed model constants: convective_fraction, h_natural."""
 
@@ -482,6 +523,18 @@ class TestSteadyAufgussWarning:
             _w.simplefilter("always")
             solve_two_zone(path, max_iter=2000)
         assert not any("Aufguss" in str(c.message) for c in caught)
+
+    def test_aufguss_face_velocity_populated(self, tmp_path: Path) -> None:
+        """K-05 free-jet face velocity is set when Aufguss is active, else 0."""
+        import warnings as _w
+        with _w.catch_warnings():
+            _w.simplefilter("ignore")
+            r_aug = solve_two_zone(_write_aufguss_yaml(tmp_path, beta_aug=0.5), max_iter=2000)
+        # defaults jet_velocity=2.0, d0=0.15, x=1.0 -> 2.0*6.2*0.15/1.0 = 1.86
+        assert abs(r_aug.aufguss_face_velocity - 1.86) < 1e-6
+        (tmp_path / "dry").mkdir()
+        r_dry = solve_two_zone(_write_case_yaml(tmp_path / "dry"), max_iter=2000)
+        assert r_dry.aufguss_face_velocity == 0.0
 
 
 class TestViewFactors:
