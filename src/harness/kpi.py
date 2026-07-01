@@ -104,17 +104,28 @@ def compute_k04(
     t_upper_series: list[float] | np.ndarray,
     event_time: float = 0.0,
 ) -> KPIResult:
-    """K-04: Time from event (Löyly) to peak temperature [s]."""
-    if len(t_upper_series) == 0 or len(time_series) == 0:
+    """K-04: Time from event (Löyly) to peak temperature [s].
+
+    Only samples at/after ``event_time`` are searched: a pre-event maximum
+    (e.g. warm-up overshoot before the Löyly pour) is not the post-event peak
+    this KPI is defined on.
+    """
+    times = np.asarray(time_series, dtype=float)
+    temps = np.asarray(t_upper_series, dtype=float)
+    n = min(times.size, temps.size)
+    times, temps = times[:n], temps[:n]
+    mask = times >= event_time
+    if n == 0 or not np.any(mask):
         return KPIResult(
             kpi_id="K-04",
             name="Peak arrival time",
             value=0.0,
             unit="s",
             pass_fail=None,
+            note="no samples at/after event_time" if n > 0 else None,
         )
-    peak_idx = int(np.argmax(t_upper_series))
-    arrival = time_series[peak_idx] - event_time
+    peak_idx = int(np.argmax(temps[mask]))
+    arrival = float(times[mask][peak_idx]) - event_time
     return KPIResult(
         kpi_id="K-04",
         name="Peak arrival time",

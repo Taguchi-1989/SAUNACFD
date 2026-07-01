@@ -113,3 +113,16 @@ class TestOpenFOAMComparison:
         result = parse_openfoam_case(case_dir, ["upper_bench"])
         assert result.probe_values == {}
         assert result.heat_balance is None
+
+    def test_probe_dirs_sorted_numerically(self, tmp_path: Path) -> None:
+        """Latest probe dir must be picked numerically ("1000" > "900")."""
+        case_dir = tmp_path / "restart_case"
+        for t, temp in [("900", 350.0), ("1000", 360.0)]:
+            probe_dir = case_dir / "postProcessing" / "probes" / t
+            probe_dir.mkdir(parents=True)
+            (probe_dir / "T").write_text(
+                f"# Probe 0 (1.5 2.0 1.25)\n# Time\t0\n{t}\t{temp}\n",
+                encoding="utf-8",
+            )
+        result = parse_openfoam_case(case_dir, ["upper_bench"])
+        assert result.probe_values["upper_bench"] == 360.0

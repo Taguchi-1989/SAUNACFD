@@ -104,6 +104,19 @@ class TestParseWallHeatFlux:
         result = parse_wall_heat_flux(tmp_path)
         assert len(result["wall"]) == 2
 
+    def test_time_dirs_sorted_numerically(self, tmp_path: Path) -> None:
+        """Lexicographic sort would put "900" after "1000" — must be numeric."""
+        for t in ["1000", "900"]:
+            pp = tmp_path / "postProcessing" / "wallHeatFlux" / t
+            pp.mkdir(parents=True)
+            (pp / "wall.dat").write_text(
+                f"# Time flux\n{t}\t-{int(t)}.0\n",
+                encoding="utf-8",
+            )
+
+        result = parse_wall_heat_flux(tmp_path)
+        assert result["wall"] == [(900.0, -900.0), (1000.0, -1000.0)]
+
 
 class TestParseVolAverageT:
     def test_empty_when_no_dir(self, tmp_path: Path) -> None:
@@ -166,3 +179,13 @@ class TestComputeHeatBalance:
         fluxes = {"heater_wall": [(100.0, 18000.0)]}
         hb = compute_heat_balance(fluxes, vol_avg_t=None)
         assert hb.vol_avg_T == 0.0
+
+    def test_uses_latest_time_not_last_entry(self) -> None:
+        """Restart dirs can leave series out of chronological order."""
+        fluxes = {
+            "heater_wall": [(200.0, 18000.0), (100.0, 17000.0)],
+        }
+        vol_avg = [(200.0, 360.0), (100.0, 350.0)]
+        hb = compute_heat_balance(fluxes, vol_avg)
+        assert hb.heater_input_W == 18000.0
+        assert hb.vol_avg_T == 360.0

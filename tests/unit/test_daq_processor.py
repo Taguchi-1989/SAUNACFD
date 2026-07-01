@@ -37,7 +37,9 @@ class TestProcessRaw:
         process_raw(raw, out, probe_name="lower_bench")
         data = np.genfromtxt(out, delimiter=",", names=True, encoding="utf-8")
         data = np.atleast_1d(data)
-        assert abs(float(data["lower_bench"][()]) - 341.15) < 0.01
+        # Index explicitly: NumPy 2.x no longer converts size-1 1-D arrays
+        # to Python scalars via float().
+        assert abs(float(data["lower_bench"][0]) - 341.15) < 0.01
 
     def test_filters_shutdown_rows(self, tmp_path: object) -> None:
         raw = tmp_path / "raw.csv"

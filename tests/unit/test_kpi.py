@@ -130,6 +130,22 @@ class TestKPI_K04:
         result = compute_k04(times, temps, event_time=0)
         assert result.value == 10.0  # peak at index 2, time=10
 
+    def test_ignores_pre_event_peak(self) -> None:
+        """A warm-up overshoot before the event must not be picked as peak."""
+        times = [0, 5, 10, 15, 20]
+        temps = [375, 350, 355, 368, 360]  # global max is BEFORE the event
+        result = compute_k04(times, temps, event_time=5.0)
+        assert result.value == 10.0  # post-event peak at t=15, minus event
+
+    def test_no_post_event_samples(self) -> None:
+        result = compute_k04([0, 5], [350, 351], event_time=100.0)
+        assert result.value == 0.0
+        assert result.note is not None
+
+    def test_empty_series(self) -> None:
+        result = compute_k04([], [], event_time=0.0)
+        assert result.value == 0.0
+
 
 class TestKPI_K05:
     def test_wind_proxy(self) -> None:

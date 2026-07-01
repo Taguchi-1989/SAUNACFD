@@ -224,7 +224,13 @@ def _plume_entrainment(
     m_dot = 0.071 * q_kw ** (1.0 / 3.0) * z_eff ** (5.0 / 3.0) + 0.0018 * q_kw
 
     # Plume temperature from energy balance: Q = m_dot * cp * (T_plume - T_amb)
-    t_plume = t_amb + q_conv_w / (m_dot * cp) if m_dot > 0.001 else t_amb + 100.0
+    # Floor the mass flow in the denominator: as m_dot -> 0 the raw energy
+    # balance diverges (thousands of K just above an arbitrary threshold,
+    # then a discontinuous fallback below it). A 0.01 kg/s floor bounds the
+    # near-source excess temperature at a physically plausible level
+    # (~stone-surface temperature for a domestic heater) and is continuous.
+    m_dot_floor = 0.01  # [kg/s]
+    t_plume = t_amb + q_conv_w / (max(m_dot, m_dot_floor) * cp)
 
     return m_dot, t_plume
 
