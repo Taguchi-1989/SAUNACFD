@@ -2,6 +2,7 @@
 
 # DHT22 data pin (external sensor, sauna air)
 DHT22_PIN = 15
+SENSOR_ID = "DHT22-001"
 
 # DS18B20 data pin (internal sensor, box temperature)
 DS18B20_PIN = 14

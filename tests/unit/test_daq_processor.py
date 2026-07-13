@@ -165,6 +165,69 @@ class TestProcessRaw:
 
         assert out.read_text(encoding="utf-8").startswith("time,upper_bench\n")
 
+    def test_pivots_multiple_sensors_to_probe_columns(self, tmp_path: object) -> None:
+        raw = tmp_path / "raw.csv"
+        raw.write_text(
+            "time_s,sensor_id,temp_c,rh_pct,box_temp_c,status\n"
+            "0.0,SHT45-LOWER,30.0,50.0,25.0,ok\n"
+            "0.0,SHT45-UPPER,70.0,20.0,25.0,ok\n"
+            "2.0,SHT45-LOWER,30.2,49.8,25.1,ok\n"
+            "2.0,SHT45-UPPER,70.4,19.8,25.1,warn\n",
+            encoding="utf-8",
+        )
+        meta = tmp_path / "meta.yaml"
+        meta.write_text(
+            "sensors:\n"
+            "  - id: SHT45-LOWER\n"
+            "    position: lower_bench\n"
+            "    calibration_offset_c: 0.1\n"
+            "  - id: SHT45-UPPER\n"
+            "    position: upper_bench\n"
+            "    calibration_offset_c: -0.2\n",
+            encoding="utf-8",
+        )
+        out = tmp_path / "processed.csv"
+
+        process_raw(raw, out, meta_yaml=meta)
+
+        data = np.atleast_1d(
+            np.genfromtxt(out, delimiter=",", names=True, encoding="utf-8")
+        )
+        assert data.dtype.names == ("time", "lower_bench", "upper_bench")
+        assert len(data) == 2
+        assert float(data["lower_bench"][0]) == pytest.approx(303.25)
+        assert float(data["upper_bench"][0]) == pytest.approx(342.95)
+
+    def test_multi_sensor_data_requires_metadata(self, tmp_path: object) -> None:
+        raw = tmp_path / "raw.csv"
+        raw.write_text(
+            "time_s,sensor_id,temp_c,rh_pct,box_temp_c,status\n"
+            "0.0,SHT45-LOWER,30.0,50.0,25.0,ok\n"
+            "0.0,SHT45-UPPER,70.0,20.0,25.0,ok\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ValueError, match="metadata"):
+            process_raw(raw, tmp_path / "processed.csv")
+
+    def test_single_sensor_id_must_match_metadata(self, tmp_path: object) -> None:
+        raw = tmp_path / "raw.csv"
+        raw.write_text(
+            "time_s,sensor_id,temp_c,rh_pct,box_temp_c,status\n"
+            "0.0,SHT45-ACTUAL,30.0,50.0,25.0,ok\n",
+            encoding="utf-8",
+        )
+        meta = tmp_path / "meta.yaml"
+        meta.write_text(
+            "sensor_id: SHT45-EXPECTED\n"
+            "probe_position:\n"
+            "  name: lower_bench\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ValueError, match="does not match"):
+            process_raw(raw, tmp_path / "processed.csv", meta_yaml=meta)
+
 
 class TestLoadProcessingMetadata:
     def test_rejects_missing_probe_name(self, tmp_path: object) -> None:
@@ -188,6 +251,20 @@ class TestLoadProcessingMetadata:
 
         assert probe_name == "lower_bench"
         assert offset == pytest.approx(0.3)
+
+    def test_single_sensor_loader_rejects_multiple_sensors(self, tmp_path: object) -> None:
+        meta = tmp_path / "meta.yaml"
+        meta.write_text(
+            "sensors:\n"
+            "  - id: lower\n"
+            "    position: lower_bench\n"
+            "  - id: upper\n"
+            "    position: upper_bench\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ValueError, match="exactly one sensor"):
+            load_processing_metadata(meta)
 
 
 class TestDetectSteadyState:

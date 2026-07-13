@@ -11,6 +11,37 @@ from daq.meta import generate_meta, save_meta
 from daq.processor import detect_steady_state, process_raw
 
 
+def _detect_raw_steady_states(raw_data: np.ndarray) -> list[tuple[str | None, float | None]]:
+    """Detect steady state independently for each sensor in raw DAQ data."""
+    raw_data = np.atleast_1d(raw_data)
+    ok_mask = np.array([status in ("ok", "warn") for status in raw_data["status"]])
+    field_names = raw_data.dtype.names or ()
+
+    if "sensor_id" in field_names:
+        sensor_ids = sorted(
+            {str(value).strip() for value in raw_data["sensor_id"] if str(value).strip()}
+        )
+        if sensor_ids:
+            results: list[tuple[str | None, float | None]] = []
+            for sensor_id in sensor_ids:
+                sensor_mask = np.array(
+                    [str(value).strip() == sensor_id for value in raw_data["sensor_id"]]
+                )
+                mask = ok_mask & sensor_mask
+                results.append((sensor_id, _detect_masked_steady_state(raw_data, mask)))
+            return results
+
+    return [(None, _detect_masked_steady_state(raw_data, ok_mask))]
+
+
+def _detect_masked_steady_state(raw_data: np.ndarray, mask: np.ndarray) -> float | None:
+    if not np.any(mask):
+        return None
+    times = np.asarray(raw_data["time_s"][mask], dtype=float)
+    temps = np.asarray(raw_data["temp_c"][mask], dtype=float)
+    return detect_steady_state(times, temps)
+
+
 @click.group()
 @click.version_option(package_name="saunaflow")
 def daq() -> None:
@@ -83,15 +114,12 @@ def process(raw_csv: str, probe: str | None, meta_yaml: str | None, output: str 
         raw_path, delimiter=",", names=True, dtype=None, encoding="utf-8"
     )
     raw_data = np.atleast_1d(raw_data)
-    ok_mask = np.array([s in ("ok", "warn") for s in raw_data["status"]])
-    if np.any(ok_mask):
-        times = np.asarray(raw_data["time_s"][ok_mask], dtype=float)
-        temps = np.asarray(raw_data["temp_c"][ok_mask], dtype=float)
-        t_ss = detect_steady_state(times, temps)
+    for sensor_id, t_ss in _detect_raw_steady_states(raw_data):
+        label = f" for sensor {sensor_id}" if sensor_id is not None else ""
         if t_ss is not None:
-            click.echo(f"Steady state detected at t={t_ss:.1f}s")
+            click.echo(f"Steady state{label} detected at t={t_ss:.1f}s")
         else:
-            click.echo("Steady state not detected within data")
+            click.echo(f"Steady state{label} not detected within data")
 
 
 @daq.command("meta")

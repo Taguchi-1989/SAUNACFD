@@ -7,11 +7,11 @@ import json
 import logging
 import time
 from pathlib import Path
-from typing import IO, Protocol
+from typing import Protocol
 
 logger = logging.getLogger(__name__)
 
-RAW_CSV_FIELDS = ["time_s", "temp_c", "rh_pct", "box_temp_c", "status"]
+RAW_CSV_FIELDS = ["time_s", "sensor_id", "temp_c", "rh_pct", "box_temp_c", "status"]
 
 
 class SerialPort(Protocol):
@@ -31,7 +31,12 @@ def log_session(
     """Read JSON lines from serial port and write raw CSV.
 
     Each line from the microcontroller is expected to be a JSON object:
-        {"time_s": 0.0, "temp_c": 68.5, "rh_pct": 12.3, "box_temp_c": 25.1, "status": "ok"}
+        {"time_s": 0.0, "sensor_id": "SHT45-001", "temp_c": 68.5,
+         "rh_pct": 12.3, "box_temp_c": 25.1, "status": "ok"}
+
+    ``sensor_id`` is optional for compatibility with the original single-sensor
+    firmware. Multi-sensor firmware should emit one line per sensor and use the
+    same ``time_s`` for readings from one sampling cycle.
 
     Args:
         port: Serial port object with readline() method.

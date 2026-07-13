@@ -14,6 +14,7 @@ from config import (
     DHT22_PIN,
     DS18B20_PIN,
     SAMPLE_INTERVAL_S,
+    SENSOR_ID,
 )
 from sensors.dht22 import DHT22Sensor
 from sensors.ds18b20 import DS18B20Sensor
@@ -54,6 +55,7 @@ def main() -> None:
 
         send_line({
             "time_s": round(time_s, 1),
+            "sensor_id": SENSOR_ID,
             "temp_c": temp_c,
             "rh_pct": rh_pct,
             "box_temp_c": round(box_temp_c, 1),

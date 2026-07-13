@@ -34,14 +34,18 @@ def _make_json_line(
     rh_pct: float = 10.0,
     box_temp_c: float = 25.0,
     status: str = "ok",
+    sensor_id: str | None = None,
 ) -> str:
-    return json.dumps({
+    data = {
         "time_s": time_s,
         "temp_c": temp_c,
         "rh_pct": rh_pct,
         "box_temp_c": box_temp_c,
         "status": status,
-    })
+    }
+    if sensor_id is not None:
+        data["sensor_id"] = sensor_id
+    return json.dumps(data)
 
 
 class TestLogSession:
@@ -106,6 +110,17 @@ class TestLogSession:
         out = tmp_path / "sub" / "dir" / "raw.csv"
         log_session(port, duration_s=10, output_path=out)
         assert out.exists()
+
+    def test_preserves_sensor_id(self, tmp_path: Path) -> None:
+        port = MockSerial([_make_json_line(sensor_id="SHT45-LOWER")])
+        out = tmp_path / "raw.csv"
+
+        log_session(port, duration_s=10, output_path=out)
+
+        data = np.atleast_1d(
+            np.genfromtxt(out, delimiter=",", names=True, dtype=None, encoding="utf-8")
+        )
+        assert data[0]["sensor_id"] == "SHT45-LOWER"
 
 
 class TestParseJsonLine:
