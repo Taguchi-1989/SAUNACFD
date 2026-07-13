@@ -65,3 +65,23 @@ def test_process_reports_steady_state_per_sensor(tmp_path: object) -> None:
     assert result.exit_code == 0, result.output
     assert "Steady state for sensor lower not detected" in result.output
     assert "Steady state for sensor upper not detected" in result.output
+
+
+def test_steady_state_command_supports_custom_window(tmp_path: object) -> None:
+    raw = tmp_path / "raw.csv"
+    raw.write_text(
+        "time_s,temp_c,rh_pct,box_temp_c,status\n"
+        "0.0,68.0,10.0,25.0,ok\n"
+        "10.0,68.0,10.0,25.0,ok\n"
+        "20.0,68.0,10.0,25.0,ok\n"
+        "30.0,68.0,10.0,25.0,ok\n",
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        daq,
+        ["steady-state", str(raw), "--window", "30"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Steady state detected at t=0.0s" in result.output

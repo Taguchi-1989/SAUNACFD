@@ -11,7 +11,11 @@ from daq.meta import generate_meta, save_meta
 from daq.processor import detect_steady_state, process_raw
 
 
-def _detect_raw_steady_states(raw_data: np.ndarray) -> list[tuple[str | None, float | None]]:
+def _detect_raw_steady_states(
+    raw_data: np.ndarray,
+    window_s: float = 60.0,
+    threshold_c_per_min: float = 0.1,
+) -> list[tuple[str | None, float | None]]:
     """Detect steady state independently for each sensor in raw DAQ data."""
     raw_data = np.atleast_1d(raw_data)
     ok_mask = np.array([status in ("ok", "warn") for status in raw_data["status"]])
@@ -28,18 +32,53 @@ def _detect_raw_steady_states(raw_data: np.ndarray) -> list[tuple[str | None, fl
                     [str(value).strip() == sensor_id for value in raw_data["sensor_id"]]
                 )
                 mask = ok_mask & sensor_mask
-                results.append((sensor_id, _detect_masked_steady_state(raw_data, mask)))
+                results.append(
+                    (
+                        sensor_id,
+                        _detect_masked_steady_state(
+                            raw_data, mask, window_s, threshold_c_per_min
+                        ),
+                    )
+                )
             return results
 
-    return [(None, _detect_masked_steady_state(raw_data, ok_mask))]
+    return [
+        (
+            None,
+            _detect_masked_steady_state(
+                raw_data, ok_mask, window_s, threshold_c_per_min
+            ),
+        )
+    ]
 
 
-def _detect_masked_steady_state(raw_data: np.ndarray, mask: np.ndarray) -> float | None:
+def _detect_masked_steady_state(
+    raw_data: np.ndarray,
+    mask: np.ndarray,
+    window_s: float,
+    threshold_c_per_min: float,
+) -> float | None:
     if not np.any(mask):
         return None
     times = np.asarray(raw_data["time_s"][mask], dtype=float)
     temps = np.asarray(raw_data["temp_c"][mask], dtype=float)
-    return detect_steady_state(times, temps)
+    return detect_steady_state(
+        times,
+        temps,
+        window_s=window_s,
+        threshold_c_per_min=threshold_c_per_min,
+    )
+
+
+def _print_steady_state_results(
+    results: list[tuple[str | None, float | None]],
+) -> None:
+    for sensor_id, t_ss in results:
+        label = f" for sensor {sensor_id}" if sensor_id is not None else ""
+        if t_ss is not None:
+            click.echo(f"Steady state{label} detected at t={t_ss:.1f}s")
+        else:
+            click.echo(f"Steady state{label} not detected within data")
 
 
 @click.group()
@@ -114,12 +153,34 @@ def process(raw_csv: str, probe: str | None, meta_yaml: str | None, output: str 
         raw_path, delimiter=",", names=True, dtype=None, encoding="utf-8"
     )
     raw_data = np.atleast_1d(raw_data)
-    for sensor_id, t_ss in _detect_raw_steady_states(raw_data):
-        label = f" for sensor {sensor_id}" if sensor_id is not None else ""
-        if t_ss is not None:
-            click.echo(f"Steady state{label} detected at t={t_ss:.1f}s")
-        else:
-            click.echo(f"Steady state{label} not detected within data")
+    _print_steady_state_results(_detect_raw_steady_states(raw_data))
+
+
+@daq.command("steady-state")
+@click.argument("raw_csv", type=click.Path(exists=True, dir_okay=False))
+@click.option("--window", "window_s", default=60.0, type=click.FloatRange(min=0.1))
+@click.option(
+    "--threshold",
+    "threshold_c_per_min",
+    default=0.1,
+    type=click.FloatRange(min=0.0),
+    help="Maximum absolute temperature rate [C/min]",
+)
+def steady_state_cmd(
+    raw_csv: str,
+    window_s: float,
+    threshold_c_per_min: float,
+) -> None:
+    """Detect steady-state arrival in a raw single- or multi-sensor CSV."""
+    raw_data = np.genfromtxt(
+        Path(raw_csv), delimiter=",", names=True, dtype=None, encoding="utf-8"
+    )
+    results = _detect_raw_steady_states(
+        raw_data,
+        window_s=window_s,
+        threshold_c_per_min=threshold_c_per_min,
+    )
+    _print_steady_state_results(results)
 
 
 @daq.command("meta")

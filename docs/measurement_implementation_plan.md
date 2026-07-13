@@ -208,7 +208,7 @@ firmware (MicroPython)
 | serial_logger.py | 実装済み | テスト (実機接続) |
 | processor.py | 実装済み | `sensor_id` 付き縦持ちCSVの多点プローブ変換に対応 |
 | validation.py | 実装済み | L-1 予測値との比較対応 |
-| 定常判定 | ロジックあり | 自動判定の CLI コマンド追加 |
+| 定常判定 | 実装済み | `saunaflow-daq steady-state` で単点・多点を自動判定 |
 | session_meta.yaml 読み込み | 実装済み | `saunaflow-daq process --meta` でプローブ名・温度校正を連携 |
 
 単一センサーの処理では、`probe_position.name` を出力 CSV のプローブ列名に使い、
@@ -221,6 +221,9 @@ CLI の `--probe` を指定した場合はメタデータ内のプローブ名�
 ```bash
 saunaflow-daq process experiments/raw/session_001_raw.csv \
   --meta experiments/meta/session_001_meta.yaml
+
+saunaflow-daq steady-state experiments/raw/session_001_raw.csv \
+  --window 60 --threshold 0.1
 ```
 
 ### 5.3 バリデーション出力例
