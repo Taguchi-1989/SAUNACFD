@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from daq.processor import detect_steady_state, process_raw
+from daq.processor import detect_steady_state, load_processing_metadata, process_raw
 
 
 class TestProcessRaw:
@@ -37,7 +37,7 @@ class TestProcessRaw:
         process_raw(raw, out, probe_name="lower_bench")
         data = np.genfromtxt(out, delimiter=",", names=True, encoding="utf-8")
         data = np.atleast_1d(data)
-        assert abs(float(data["lower_bench"][()]) - 341.15) < 0.01
+        assert abs(float(data["lower_bench"][0]) - 341.15) < 0.01
 
     def test_filters_shutdown_rows(self, tmp_path: object) -> None:
         raw = tmp_path / "raw.csv"
@@ -104,6 +104,90 @@ class TestProcessRaw:
         out = tmp_path / "sub" / "dir" / "processed.csv"
         process_raw(raw, out)
         assert out.exists()
+
+    def test_uses_probe_name_from_session_metadata(self, tmp_path: object) -> None:
+        raw = tmp_path / "raw.csv"
+        raw.write_text(
+            "time_s,temp_c,rh_pct,box_temp_c,status\n"
+            "0.0,30.0,50.0,25.0,ok\n",
+            encoding="utf-8",
+        )
+        meta = tmp_path / "meta.yaml"
+        meta.write_text(
+            "session_id: '001'\n"
+            "probe_position:\n"
+            "  name: floor_level\n",
+            encoding="utf-8",
+        )
+        out = tmp_path / "processed.csv"
+
+        process_raw(raw, out, meta_yaml=meta)
+
+        data = np.genfromtxt(out, delimiter=",", names=True, encoding="utf-8")
+        assert "floor_level" in data.dtype.names
+
+    def test_applies_metadata_temperature_offset(self, tmp_path: object) -> None:
+        raw = tmp_path / "raw.csv"
+        raw.write_text(
+            "time_s,temp_c,rh_pct,box_temp_c,status\n"
+            "0.0,30.0,50.0,25.0,ok\n",
+            encoding="utf-8",
+        )
+        meta = tmp_path / "meta.yaml"
+        meta.write_text(
+            "probe_position:\n"
+            "  name: floor_level\n"
+            "calibration:\n"
+            "  temperature_offset_c: -0.4\n",
+            encoding="utf-8",
+        )
+        out = tmp_path / "processed.csv"
+
+        process_raw(raw, out, meta_yaml=meta)
+
+        data = np.atleast_1d(
+            np.genfromtxt(out, delimiter=",", names=True, encoding="utf-8")
+        )
+        assert float(data["floor_level"][0]) == pytest.approx(302.75)
+
+    def test_explicit_probe_name_overrides_metadata(self, tmp_path: object) -> None:
+        raw = tmp_path / "raw.csv"
+        raw.write_text(
+            "time_s,temp_c,rh_pct,box_temp_c,status\n"
+            "0.0,30.0,50.0,25.0,ok\n",
+            encoding="utf-8",
+        )
+        meta = tmp_path / "meta.yaml"
+        meta.write_text("probe_position:\n  name: floor_level\n", encoding="utf-8")
+        out = tmp_path / "processed.csv"
+
+        process_raw(raw, out, probe_name="upper_bench", meta_yaml=meta)
+
+        assert out.read_text(encoding="utf-8").startswith("time,upper_bench\n")
+
+
+class TestLoadProcessingMetadata:
+    def test_rejects_missing_probe_name(self, tmp_path: object) -> None:
+        meta = tmp_path / "meta.yaml"
+        meta.write_text("session_id: '001'\n", encoding="utf-8")
+
+        with pytest.raises(ValueError, match="probe_position.name"):
+            load_processing_metadata(meta)
+
+    def test_supports_planned_single_sensor_format(self, tmp_path: object) -> None:
+        meta = tmp_path / "meta.yaml"
+        meta.write_text(
+            "sensors:\n"
+            "  - id: SHT45-001\n"
+            "    position: lower_bench\n"
+            "    calibration_offset_c: 0.3\n",
+            encoding="utf-8",
+        )
+
+        probe_name, offset = load_processing_metadata(meta)
+
+        assert probe_name == "lower_bench"
+        assert offset == pytest.approx(0.3)
 
 
 class TestDetectSteadyState:

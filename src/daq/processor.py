@@ -3,16 +3,73 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import numpy as np
+import yaml
 
 from daq.converter import celsius_to_kelvin
+
+
+def load_processing_metadata(meta_yaml: Path) -> tuple[str, float]:
+    """Load the probe name and temperature correction from session metadata.
+
+    Both the metadata emitted by :mod:`daq.meta` and the single-sensor form in
+    ``docs/measurement_implementation_plan.md`` are accepted. The correction
+    is added to the measured Celsius value before conversion to Kelvin.
+
+    Args:
+        meta_yaml: Path to a session metadata YAML file.
+
+    Returns:
+        A ``(probe_name, temperature_offset_c)`` tuple.
+
+    Raises:
+        ValueError: If the YAML is not a mapping or does not identify exactly
+            one usable probe.
+    """
+    with open(meta_yaml, encoding="utf-8") as f:
+        metadata = yaml.safe_load(f)
+
+    if not isinstance(metadata, dict):
+        raise ValueError(f"Session metadata must be a mapping: {meta_yaml}")
+
+    probe_position = metadata.get("probe_position")
+    if isinstance(probe_position, dict):
+        probe_name = probe_position.get("name")
+        calibration = metadata.get("calibration", {})
+        if calibration is None:
+            calibration = {}
+        if not isinstance(calibration, dict):
+            raise ValueError("session metadata 'calibration' must be a mapping")
+        offset = calibration.get(
+            "temperature_offset_c", metadata.get("calibration_offset_c", 0.0)
+        )
+    else:
+        sensors = metadata.get("sensors")
+        if not isinstance(sensors, list) or len(sensors) != 1:
+            raise ValueError(
+                "session metadata must define probe_position.name or exactly one sensor"
+            )
+        sensor: Any = sensors[0]
+        if not isinstance(sensor, dict):
+            raise ValueError("session metadata sensor must be a mapping")
+        probe_name = sensor.get("position")
+        offset = sensor.get("calibration_offset_c", 0.0)
+
+    if not isinstance(probe_name, str) or not probe_name.strip():
+        raise ValueError("session metadata must define a non-empty probe_position.name")
+    if isinstance(offset, bool) or not isinstance(offset, (int, float)):
+        raise ValueError("session metadata temperature offset must be numeric")
+
+    return probe_name.strip(), float(offset)
 
 
 def process_raw(
     raw_csv: Path,
     output_csv: Path,
-    probe_name: str = "lower_bench",
+    probe_name: str | None = None,
+    meta_yaml: Path | None = None,
 ) -> Path:
     """Convert raw sensor CSV to validation-compatible CSV.
 
@@ -24,10 +81,21 @@ def process_raw(
         raw_csv: Path to raw sensor CSV.
         output_csv: Path for output validation CSV.
         probe_name: Column name for temperature (must match CFD probe name).
+            Overrides the name in ``meta_yaml`` when both are supplied.
+        meta_yaml: Optional session metadata. Its probe name is used when
+            ``probe_name`` is omitted, and its calibration offset is applied.
 
     Returns:
         Path to the written output CSV.
     """
+    temperature_offset_c = 0.0
+    if meta_yaml is not None:
+        metadata_probe_name, temperature_offset_c = load_processing_metadata(meta_yaml)
+        if probe_name is None:
+            probe_name = metadata_probe_name
+    if probe_name is None:
+        probe_name = "lower_bench"
+
     # Read raw CSV; status is a string column
     data = np.genfromtxt(
         raw_csv,
@@ -50,13 +118,13 @@ def process_raw(
         return output_csv
 
     times = np.asarray(filtered["time_s"], dtype=float)
-    temps_c = np.asarray(filtered["temp_c"], dtype=float)
+    temps_c = np.asarray(filtered["temp_c"], dtype=float) + temperature_offset_c
     temps_k = np.array([celsius_to_kelvin(t) for t in temps_c])
 
     output_csv.parent.mkdir(parents=True, exist_ok=True)
     with open(output_csv, "w", encoding="utf-8") as f:
         f.write(f"time,{probe_name}\n")
-        for t, v in zip(times, temps_k):
+        for t, v in zip(times, temps_k, strict=True):
             f.write(f"{t:.1f},{v:.2f}\n")
 
     return output_csv

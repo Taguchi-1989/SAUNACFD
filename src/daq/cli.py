@@ -5,6 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import click
+import numpy as np
+
+from daq.meta import generate_meta, save_meta
+from daq.processor import detect_steady_state, process_raw
 
 
 @click.group()
@@ -22,9 +26,9 @@ def log(port: str, baudrate: int, duration: int, output: str | None) -> None:
     """Record sensor data from serial port to raw CSV."""
     try:
         import serial as pyserial  # noqa: F811
-    except ImportError:
+    except ImportError as exc:
         click.echo("ERROR: pyserial not installed. Run: pip install pyserial", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from exc
 
     from daq.serial_logger import log_session
 
@@ -47,14 +51,17 @@ def log(port: str, baudrate: int, duration: int, output: str | None) -> None:
 
 @daq.command()
 @click.argument("raw_csv", type=click.Path(exists=True))
-@click.option("--probe", default="lower_bench", help="Probe name for output column")
+@click.option("--probe", default=None, help="Probe name (overrides session metadata)")
+@click.option(
+    "--meta",
+    "meta_yaml",
+    default=None,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Session metadata YAML for probe mapping and calibration",
+)
 @click.option("--output", "-o", default=None, type=click.Path(), help="Output processed CSV")
-def process(raw_csv: str, probe: str, output: str | None) -> None:
+def process(raw_csv: str, probe: str | None, meta_yaml: str | None, output: str | None) -> None:
     """Convert raw CSV to validation-compatible format."""
-    from daq.processor import detect_steady_state, process_raw
-
-    import numpy as np
-
     raw_path = Path(raw_csv)
 
     if output is None:
@@ -63,7 +70,12 @@ def process(raw_csv: str, probe: str, output: str | None) -> None:
     else:
         output_path = Path(output)
 
-    result = process_raw(raw_path, output_path, probe_name=probe)
+    result = process_raw(
+        raw_path,
+        output_path,
+        probe_name=probe,
+        meta_yaml=Path(meta_yaml) if meta_yaml is not None else None,
+    )
     click.echo(f"Processed CSV: {result}")
 
     # Detect steady state from raw data
@@ -102,11 +114,6 @@ def meta_cmd(
     output: str | None,
 ) -> None:
     """Generate session metadata YAML from raw CSV."""
-    from daq.meta import generate_meta, save_meta
-    from daq.processor import detect_steady_state
-
-    import numpy as np
-
     raw_path = Path(raw_csv)
 
     # Detect steady state

@@ -209,7 +209,16 @@ firmware (MicroPython)
 | processor.py | 実装済み | 多点センサー対応の確認 |
 | validation.py | 実装済み | L-1 予測値との比較対応 |
 | 定常判定 | ロジックあり | 自動判定の CLI コマンド追加 |
-| session_meta.yaml 読み込み | 未実装 | processor に meta 連携 |
+| session_meta.yaml 読み込み | 実装済み | `saunaflow-daq process --meta` でプローブ名・温度校正を連携 |
+
+単一センサーの処理では、`probe_position.name` を出力 CSV のプローブ列名に使い、
+`calibration.temperature_offset_c` があれば測定温度（℃）へ加算してから Kelvin に変換する。
+CLI の `--probe` を指定した場合はメタデータ内のプローブ名より優先される。
+
+```bash
+saunaflow-daq process experiments/raw/session_001_raw.csv \
+  --meta experiments/meta/session_001_meta.yaml
+```
 
 ### 5.3 バリデーション出力例
 
