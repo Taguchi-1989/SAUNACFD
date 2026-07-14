@@ -10,6 +10,7 @@ import numpy as np
 import yaml
 
 from daq.converter import celsius_to_kelvin
+from daq.meta import validate_session_meta
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,14 @@ def load_sensor_processing_metadata(meta_yaml: Path) -> list[SensorProcessingMet
 
     if not isinstance(metadata, dict):
         raise ValueError(f"Session metadata must be a mapping: {meta_yaml}")
+
+    schema_version = metadata.get("schema_version")
+    if schema_version is not None:
+        if schema_version != "1.0":
+            raise ValueError(f"unsupported session metadata schema_version: {schema_version}")
+        errors = validate_session_meta(metadata)
+        if errors:
+            raise ValueError("invalid session metadata: " + "; ".join(errors))
 
     probe_position = metadata.get("probe_position")
     if isinstance(probe_position, dict):
@@ -54,11 +63,20 @@ def load_sensor_processing_metadata(meta_yaml: Path) -> list[SensorProcessingMet
     for sensor in sensors:
         if not isinstance(sensor, dict):
             raise ValueError("session metadata sensor must be a mapping")
+        position = sensor.get("position")
+        probe_name = position.get("name") if isinstance(position, dict) else position
+        calibration = sensor.get("calibration", {})
+        if calibration is None:
+            calibration = {}
+        if not isinstance(calibration, dict):
+            raise ValueError("session metadata sensor calibration must be a mapping")
         result.append(
             _make_sensor_metadata(
                 sensor_id=sensor.get("id"),
-                probe_name=sensor.get("position"),
-                offset=sensor.get("calibration_offset_c", 0.0),
+                probe_name=probe_name,
+                offset=calibration.get(
+                    "temperature_offset_c", sensor.get("calibration_offset_c", 0.0)
+                ),
             )
         )
 

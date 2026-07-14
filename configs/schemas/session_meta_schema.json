@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://saunaflow.local/schemas/session-meta-v1.json",
+  "title": "SaunaFlow DAQ Session Metadata v1",
+  "description": "Versioned metadata contract for reproducible sauna measurement sessions",
+  "type": "object",
+  "required": ["schema_version", "session", "environment", "sensors"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "session": {
+      "type": "object",
+      "required": ["id", "started_at", "sampling_interval_s"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "started_at": { "type": "string", "format": "date-time" },
+        "timezone": { "type": "string", "default": "Asia/Tokyo" },
+        "sampling_interval_s": { "type": "number", "exclusiveMinimum": 0 },
+        "steady_state_reached_s": { "type": "number", "minimum": 0 },
+        "case_id": { "type": "string", "minLength": 1 },
+        "operator": { "type": "string" },
+        "notes": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "environment": {
+      "type": "object",
+      "required": ["atmospheric_pressure_pa"],
+      "properties": {
+        "atmospheric_pressure_pa": {
+          "type": "number",
+          "minimum": 80000,
+          "maximum": 110000
+        },
+        "outdoor_temp_c": { "type": "number", "minimum": -50, "maximum": 60 },
+        "outdoor_rh_pct": { "type": "number", "minimum": 0, "maximum": 100 }
+      },
+      "additionalProperties": false
+    },
+    "sensors": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/sensor" }
+    },
+    "events": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/event" },
+      "default": []
+    },
+    "processing": {
+      "type": "object",
+      "properties": {
+        "steady_state_window_s": { "type": "number", "exclusiveMinimum": 0, "default": 60 },
+        "steady_state_threshold_c_per_min": {
+          "type": "number",
+          "minimum": 0,
+          "default": 0.1
+        },
+        "resample_interval_s": { "type": "number", "exclusiveMinimum": 0 },
+        "missing_value_policy": {
+          "type": "string",
+          "enum": ["preserve", "drop_incomplete", "linear_interpolate"],
+          "default": "preserve"
+        }
+      },
+      "additionalProperties": false
+    },
+    "extensions": {
+      "type": "object",
+      "description": "Namespaced project-specific metadata",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "sensor": {
+      "type": "object",
+      "required": ["id", "type", "measures", "position"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "minLength": 1 },
+        "serial_number": { "type": "string" },
+        "measures": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": ["temperature", "relative_humidity", "air_velocity", "box_temperature"]
+          }
+        },
+        "position": {
+          "type": "object",
+          "required": ["name"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1 },
+            "x_m": { "type": "number" },
+            "y_m": { "type": "number", "minimum": 0 },
+            "z_m": { "type": "number" }
+          },
+          "additionalProperties": false
+        },
+        "calibration": {
+          "type": "object",
+          "properties": {
+            "temperature_offset_c": { "type": "number" },
+            "relative_humidity_offset_pct": { "type": "number" },
+            "air_velocity_scale": { "type": "number", "exclusiveMinimum": 0 },
+            "recorded_at": { "type": "string", "format": "date-time" },
+            "reference": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "cable_length_m": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "event": {
+      "type": "object",
+      "required": ["time_s", "type"],
+      "properties": {
+        "time_s": { "type": "number", "minimum": 0 },
+        "type": {
+          "type": "string",
+          "enum": ["loyly", "aufguss_start", "aufguss_end", "door_open", "door_close", "heater_change", "marker"]
+        },
+        "water_mass_kg": { "type": "number", "minimum": 0 },
+        "heater_power_kw": { "type": "number", "minimum": 0 },
+        "notes": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -7,7 +7,7 @@ from pathlib import Path
 import click
 import numpy as np
 
-from daq.meta import generate_meta, save_meta
+from daq.meta import generate_session_meta_v1, load_and_validate_session_meta, save_meta
 from daq.processor import detect_steady_state, process_raw
 
 
@@ -183,10 +183,39 @@ def steady_state_cmd(
     _print_steady_state_results(results)
 
 
+@daq.command("validate-meta")
+@click.argument("meta_yaml", type=click.Path(exists=True, dir_okay=False))
+def validate_meta_cmd(meta_yaml: str) -> None:
+    """Validate canonical session metadata against the v1 data contract."""
+    _, errors = load_and_validate_session_meta(Path(meta_yaml))
+    if errors:
+        for error in errors:
+            click.echo(f"ERROR: {error}", err=True)
+        raise click.ClickException(f"metadata validation failed with {len(errors)} error(s)")
+    click.echo("Session metadata is valid (schema v1.0)")
+
+
 @daq.command("meta")
 @click.argument("raw_csv", type=click.Path(exists=True))
 @click.option("--session-id", required=True, help="Session identifier")
 @click.option("--sensor-id", default="DHT22-001", help="Sensor identifier")
+@click.option("--sensor-type", default="DHT22", help="Sensor model/type")
+@click.option(
+    "--measure",
+    "measures",
+    multiple=True,
+    type=click.Choice(
+        ["temperature", "relative_humidity", "air_velocity", "box_temperature"]
+    ),
+    default=("temperature", "relative_humidity"),
+    help="Measured quantity; repeat for multi-function sensors",
+)
+@click.option(
+    "--sampling-interval",
+    default=2.0,
+    type=click.FloatRange(min=0.1),
+    help="Sampling interval [s]",
+)
 @click.option("--cable-length", default=0.3, type=float, help="Cable length [m]")
 @click.option("--probe", default="lower_bench", help="Probe name")
 @click.option("--probe-y", default=0.8, type=float, help="Probe height [m]")
@@ -196,6 +225,9 @@ def meta_cmd(
     raw_csv: str,
     session_id: str,
     sensor_id: str,
+    sensor_type: str,
+    measures: tuple[str, ...],
+    sampling_interval: float,
     cable_length: float,
     probe: str,
     probe_y: float,
@@ -217,9 +249,12 @@ def meta_cmd(
         temps = np.asarray(raw_data["temp_c"][ok_mask], dtype=float)
         t_ss = detect_steady_state(times, temps)
 
-    meta = generate_meta(
+    meta = generate_session_meta_v1(
         session_id=session_id,
+        sensor_type=sensor_type,
         sensor_id=sensor_id,
+        measures=list(measures),
+        sampling_interval_s=sampling_interval,
         cable_length_m=cable_length,
         probe_name=probe,
         probe_y=probe_y,

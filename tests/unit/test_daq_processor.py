@@ -198,6 +198,39 @@ class TestProcessRaw:
         assert float(data["lower_bench"][0]) == pytest.approx(303.25)
         assert float(data["upper_bench"][0]) == pytest.approx(342.95)
 
+    def test_processes_canonical_v1_metadata(self, tmp_path: object) -> None:
+        raw = tmp_path / "raw.csv"
+        raw.write_text(
+            "time_s,sensor_id,temp_c,rh_pct,box_temp_c,status\n"
+            "0.0,SHT45-LOWER,30.0,50.0,25.0,ok\n",
+            encoding="utf-8",
+        )
+        meta = tmp_path / "session_meta.yaml"
+        meta.write_text(
+            "schema_version: '1.0'\n"
+            "session:\n"
+            "  id: session-001\n"
+            "  started_at: '2026-07-14T14:00:00+09:00'\n"
+            "  sampling_interval_s: 2\n"
+            "environment:\n"
+            "  atmospheric_pressure_pa: 100800\n"
+            "sensors:\n"
+            "  - id: SHT45-LOWER\n"
+            "    type: SHT45\n"
+            "    measures: [temperature, relative_humidity]\n"
+            "    position: {name: lower_bench, y_m: 0.8}\n"
+            "    calibration: {temperature_offset_c: 0.1}\n",
+            encoding="utf-8",
+        )
+        out = tmp_path / "processed.csv"
+
+        process_raw(raw, out, meta_yaml=meta)
+
+        data = np.atleast_1d(
+            np.genfromtxt(out, delimiter=",", names=True, encoding="utf-8")
+        )
+        assert float(data["lower_bench"][0]) == pytest.approx(303.25)
+
     def test_multi_sensor_data_requires_metadata(self, tmp_path: object) -> None:
         raw = tmp_path / "raw.csv"
         raw.write_text(

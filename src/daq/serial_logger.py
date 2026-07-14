@@ -11,7 +11,15 @@ from typing import Protocol
 
 logger = logging.getLogger(__name__)
 
-RAW_CSV_FIELDS = ["time_s", "sensor_id", "temp_c", "rh_pct", "box_temp_c", "status"]
+RAW_CSV_FIELDS = [
+    "time_s",
+    "sensor_id",
+    "temp_c",
+    "rh_pct",
+    "air_velocity_m_s",
+    "box_temp_c",
+    "status",
+]
 
 
 class SerialPort(Protocol):
