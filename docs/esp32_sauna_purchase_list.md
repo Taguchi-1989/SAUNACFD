@@ -14,6 +14,56 @@
 - USBパネル端子と液晶は初号機には付けない。穴と結露経路を減らす。
 - 汎用Li-ionモバイルバッテリーは使わず、単3形Ni-MH電池を交換できる電源を使う。
 
+## 0. カート準備状況（2026-07-15）
+
+購入確定はしていない。ブラウザの各カートに以下を投入済みなので、リンクを開き、不要品を削除してから注文する。Cookieやカートの保存期限により消える場合は、下表の商品URLから再投入する。
+
+| 店舗 | カート | 投入内容 | 現在の小計・注意 |
+|---|---|---|---|
+| 秋月電子 | [買い物かご](https://akizukidenshi.com/catalog/cart/cart.aspx) | 下記15品目、ユニバーサル基板のみ2枚 | 12,615円＋送料 |
+| AXEL | [買い物かご](https://axel.as-1.co.jp/cart/cart_1.php) | SHT45 PTFE ×1 | 3,752円税込。取寄せ品・サプライヤ在庫なしのため納期確認必須 |
+| 千石電商 | [買い物かご](https://www.sengoku.co.jp/mod/sgk_cart/cart.php) | DS18B20防水プローブ ×1 | 350円＋送料 |
+| ヨドバシ | [買い物かご](https://order.yodobashi.com/yc/shoppingcart/index.html) | K-KJ87MCD40L ×1 | 4,240円、在庫残少表示 |
+
+### 秋月電子のカート内訳
+
+| 販売コード | 商品 | 数量 | 商品URL |
+|---|---|---:|---|
+| 115673 | ESP32-DevKitC-32E | 1 | [商品ページ](https://akizukidenshi.com/catalog/g/g115673/) |
+| 114015 | microSDブレークアウト基板 | 1 | [商品ページ](https://akizukidenshi.com/catalog/g/g114015/) |
+| 112716 | IP67青色LED付オルタネート押しボタン | 1 | [商品ページ](https://akizukidenshi.com/catalog/g/g112716/) |
+| 108218 | MAX31855 K型熱電対アンプ | 1 | [商品ページ](https://akizukidenshi.com/catalog/g/g108218/) |
+| 110750 | K型熱電対 NR-39B | 1 | [商品ページ](https://akizukidenshi.com/catalog/g/g110750/) |
+| 107607 | USB A-microBデータケーブル 1.5 m | 1 | [商品ページ](https://akizukidenshi.com/catalog/g/g107607/) |
+| 100315 | ブレッドボード EIC-801 | 1 | [商品ページ](https://akizukidenshi.com/catalog/g/g100315/) |
+| 100288 | ブレッドボード用ジャンパ線 | 1 | [商品ページ](https://akizukidenshi.com/catalog/g/g100288/) |
+| 103229 | Cタイプユニバーサル基板 | 2 | [商品ページ](https://akizukidenshi.com/catalog/g/g103229/) |
+| 125331 | 1/4 W 330 ohm抵抗 100本 | 1袋 | [商品ページ](https://akizukidenshi.com/catalog/g/g125331/) |
+| 125472 | 1/4 W 4.7 kohm抵抗 100本 | 1袋 | [商品ページ](https://akizukidenshi.com/catalog/g/g125472/) |
+| 105779 | 分割ロングピンソケット 1×42 | 1 | [商品ページ](https://akizukidenshi.com/catalog/g/g105779/) |
+| 100167 | ピンヘッダー 1×40 | 1 | [商品ページ](https://akizukidenshi.com/catalog/g/g100167/) |
+| 106313 | 3 mm赤・黄緑2色LED 10個 | 1袋 | [商品ページ](https://akizukidenshi.com/catalog/g/g106313/) |
+| 115844 | KIOXIA microSDHC 32 GB | 1 | [商品ページ](https://akizukidenshi.com/catalog/g/g115844/) |
+
+### 他店の直接URL
+
+- SHT45 PTFE: [AXEL 54-2942-92](https://axel.as-1.co.jp/asone/d/54-2942-92/)
+- DS18B20防水プローブ: [千石電商 EEHD-6TZN](https://www.sengoku.co.jp/mod/sgk_cart/detail.php?code=EEHD-6TZN)
+- eneloop USB入出力電源セット: [ヨドバシ K-KJ87MCD40L](https://www.yodobashi.com/product/100000001007737348/)
+
+Amazonにも同型電源はあるが、確認時の出品は最小注文数3個だったため採用せず、カートから削除した。ヨドバシの1個販売を採用する。
+
+### 中古で選ぶもの
+
+中古品は状態を見てユーザーが選べるよう、特定の一点物をカートへは入れていない。
+
+- [メルカリ: クーラーボックス 5L～8L](https://jp.mercari.com/search?keyword=%E3%82%AF%E3%83%BC%E3%83%A9%E3%83%BC%E3%83%9C%E3%83%83%E3%82%AF%E3%82%B9%207L)
+- [Yahoo!オークション: クーラーボックス 7L](https://auctions.yahoo.co.jp/search/search?p=%E3%82%AF%E3%83%BC%E3%83%A9%E3%83%BC%E3%83%9C%E3%83%83%E3%82%AF%E3%82%B9+7L)
+- [メルカリ: 充電式ドリルドライバー](https://jp.mercari.com/search?keyword=%E5%85%85%E9%9B%BB%E5%BC%8F%E3%83%89%E3%83%AA%E3%83%AB%E3%83%89%E3%83%A9%E3%82%A4%E3%83%90%E3%83%BC)
+- [Yahoo!オークション: 温調はんだごて](https://auctions.yahoo.co.jp/search/search?p=%E6%B8%A9%E8%AA%BF%E3%81%AF%E3%82%93%E3%81%A0%E3%81%94%E3%81%A6)
+
+ケースはパッキン・ラッチ・割れを確認し、内寸260×160×150 mm以上を目安にする。工具は動作確認済みを選ぶ。保冷剤、吸水材、電線、シール材、切削刃、保護具は新品にする。
+
 ## 1. 今回買う電子部品
 
 価格は2026-07-14確認時の税込価格または税込概算。送料は含まない。
@@ -24,20 +74,20 @@
 | 必須 | Adafruit SHT45 PTFE、ADA-6174 | 1 | 3,949円目安 | 3,949円 | [AXEL 54-2942-92](https://axel.as-1.co.jp/asone/d/54-2942-92/)。標準3,590円税別。発注前に納期回答を確認する |
 | 必須 | DS18B20防水プローブ、Elecrow STH01102S | 1 | 350円 | 350円 | [千石電商](https://www.sengoku.co.jp/mod/sgk_cart/detail.php?code=EEHD-6TZN)。ケース内温度専用 |
 | 必須 | microSDブレークアウト、AE-microSD-LLCNV、秋月 114015 | 1 | 480円 | 480円 | [秋月電子](https://akizukidenshi.com/catalog/g/g114015/)。5 V入力、SPI接続 |
-| 必須 | 正規品microSDHC 16～32 GB、Class 10 | 1 | 1,000円目安 | 1,000円 | 家電量販店。容量より販売元の信頼性を優先し、新品を使う |
+| 必須 | KIOXIA microSDHC 32 GB、秋月 115844 | 1 | 2,980円 | 2,980円 | [秋月電子](https://akizukidenshi.com/catalog/g/g115844/)。新品を使う |
 | 必須 | IP67青色LED付オルタネート押しボタン、秋月 112716 | 1 | 980円 | 980円 | [秋月電子](https://akizukidenshi.com/catalog/g/g112716/)。主電源兼POWER表示 |
 | 必須 | MAX31855 K型熱電対アンプ、秋月 108218 | 1 | 3,450円 | 3,450円 | [秋月電子](https://akizukidenshi.com/catalog/g/g108218/)。SHT45とは独立した温度照合 |
 | 必須 | K型熱電対 NR-39B、秋月 110750 | 1 | 500円 | 500円 | [秋月電子](https://akizukidenshi.com/catalog/g/g110750/)。-50～250℃、1 m |
-| 必須 | Panasonic K-KJ87MCD40L（BQ-CC87＋eneloop単3×4） | 1 | 3,900円目安 | 3,900円 | [Panasonic仕様](https://panasonic.jp/battery/products/K-KJ87MCD40L/spec.html)。新品。充電は室外・常温で行う |
+| 必須 | Panasonic K-KJ87MCD40L（BQ-CC87＋eneloop単3×4） | 1 | 4,240円 | 4,240円 | [ヨドバシ](https://www.yodobashi.com/product/100000001007737348/)、[Panasonic仕様](https://panasonic.jp/battery/products/K-KJ87MCD40L/spec.html)。新品。充電は室外・常温で行う |
 | 必須 | Cタイプユニバーサル基板 72×47 mm、秋月 103229 | 2 | 130円 | 260円 | [秋月電子](https://akizukidenshi.com/catalog/g/g103229/)。1枚は予備 |
 | 必須 | PG7ケーブルグランド、適合径3～6.5 mm、IP68 | 3 | 100円目安 | 300円 | SHT45、K熱電対、予備/DS18B20用。取付穴は購入品の図面で決める |
-| 必須 | 3 mm高輝度LED 緑・赤 | 各2 | 50円目安 | 200円 | RUN=緑、FAULT=赤。各1個は予備 |
-| 必須 | 抵抗 330 ohm、4.7 kohm、10 kohm | 各10 | 100円目安 | 300円 | LED、DS18B20プルアップ、スイッチ入力用 |
+| 必須 | 3 mm赤・黄緑2色LED、秋月 106313 | 1袋 | 150円 | 150円 | [秋月電子](https://akizukidenshi.com/catalog/g/g106313/)。RUN=黄緑、FAULT=赤 |
+| 必須 | 330 ohm、4.7 kohm抵抗、秋月 125331/125472 | 各1袋 | 180/170円 | 350円 | LEDとDS18B20プルアップ用。各100本入り |
 | 必須 | ピンソケット、端子台、26 AWG配線、熱収縮チューブ | 1式 | 2,000円目安 | 2,000円 | ESP32は交換できるよう直付けせずソケット実装 |
 | 試作用 | 400穴以上のブレッドボード＋ジャンパ線 | 1式 | 1,200円目安 | 1,200円 | 室温での配線・ファーム確認専用 |
 | 必須 | USB A-microB データケーブル 0.5～1.5 m | 1 | 300円目安 | 300円 | 書込み・回収用。サウナ計測中は接続しない |
 
-電子部品小計は約 **21,000円＋送料**。SHT45の納期が長い場合だけ、[秋月 SHT40Iモジュール 130207](https://akizukidenshi.com/catalog/g/g130207/)（650円）を1個買い、机上試験を先行する。SHT40Iは実サウナ投入用SHT45 PTFEの代替とはしない。
+電子部品小計は約 **23,300円＋送料**。このうち4店舗のカート投入済み分は20,957円で、PG7グランド、配線・熱収縮材など約2,300円はホームセンター等でケーブル実径を確認してから買う。SHT45の納期が長い場合だけ、[秋月 SHT40Iモジュール 130207](https://akizukidenshi.com/catalog/g/g130207/)（650円）を1個買い、机上試験を先行する。SHT40Iは実サウナ投入用SHT45 PTFEの代替とはしない。
 
 ## 2. ケースと計測治具
 
@@ -133,4 +183,4 @@
 5. 中古店/フリマ/リユース店: 5～8 Lハード保冷ケース、スタンド、手持ちで不足する一般工具。
 6. ホームセンター: PG7グランド、フォーム、PP容器、取付板、シール材、結束材。
 
-工具を除く初号機総額は、電子部品約21,000円＋ケース/治具約14,000円で、**約35,000円＋送料**を見込む。K熱電対系を後回しにすれば約31,000円から開始できるが、CFD検証用の独立温度照合として初回から搭載することを推奨する。
+工具を除く初号機総額は、電子部品約23,300円＋ケース/治具約14,000円で、**約37,300円＋送料**を見込む。K熱電対系を後回しにすれば約33,400円から開始できるが、CFD検証用の独立温度照合として初回から搭載することを推奨する。
