@@ -1,0 +1,22 @@
+shop,item_code,item_name,quantity,url,priority
+Akizuki,115673,ESP32-DevKitC-32E,1,https://akizukidenshi.com/catalog/g/g115673/,required
+Akizuki,114015,microSD breakout,1,https://akizukidenshi.com/catalog/g/g114015/,required
+Akizuki,112716,IP67 illuminated power switch,1,https://akizukidenshi.com/catalog/g/g112716/,required
+Akizuki,108218,MAX31855 thermocouple amplifier,1,https://akizukidenshi.com/catalog/g/g108218/,required
+Akizuki,110750,K-type thermocouple NR-39B,1,https://akizukidenshi.com/catalog/g/g110750/,required
+Akizuki,107607,USB A to micro-B cable,1,https://akizukidenshi.com/catalog/g/g107607/,required
+Akizuki,100315,breadboard EIC-801,1,https://akizukidenshi.com/catalog/g/g100315/,prototype
+Akizuki,100288,breadboard jumper wire set,1,https://akizukidenshi.com/catalog/g/g100288/,prototype
+Akizuki,103229,universal PCB C size,2,https://akizukidenshi.com/catalog/g/g103229/,required
+Akizuki,125331,330 ohm resistor pack,1,https://akizukidenshi.com/catalog/g/g125331/,required
+Akizuki,125472,4.7 kohm resistor pack,1,https://akizukidenshi.com/catalog/g/g125472/,required
+Akizuki,105779,long pin socket 1x42,1,https://akizukidenshi.com/catalog/g/g105779/,required
+Akizuki,100167,pin header 1x40,1,https://akizukidenshi.com/catalog/g/g100167/,required
+Akizuki,106313,3 mm red and yellow-green LED pack,1,https://akizukidenshi.com/catalog/g/g106313/,required
+Akizuki,115844,KIOXIA microSDHC 32 GB,1,https://akizukidenshi.com/catalog/g/g115844/,required
+Adafruit,6174,SHT45 PTFE sensor,1,https://www.adafruit.com/product/6174,required
+Sengoku,EEHD-6TZN,DS18B20 waterproof probe,1,https://www.sengoku.co.jp/mod/sgk_cart/detail.php?code=EEHD-6TZN,required
+ASKUL,X366280,protected LiPo 3.7 V 2000 mAh,1,https://www.askul.co.jp/p/X366280/,required_lipo
+SwitchScience,3505,LiPo charger booster 5 V 1 A,1,https://www.switch-science.com/products/3505,required_lipo
+DigiKey,67L040,40 C normally closed thermostat,1,https://www.digikey.jp/ja/products/detail/sensata-airpax/67L040/5082088,required_lipo
+Yodobashi,K-KJ87MCD40L,eneloop USB output charger set,1,https://www.yodobashi.com/product/100000001007737348/,fallback_only
