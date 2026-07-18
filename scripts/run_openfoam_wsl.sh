@@ -5,7 +5,9 @@
 # Copies the case to Linux filesystem for performance, runs solver,
 # then copies results back to the Windows source directory.
 set -e
-export FOAM_SIGFPE=false
+# Default keeps the FPE guard off; pass FOAM_SIGFPE=true to trap floating
+# point errors (verification runs)
+export FOAM_SIGFPE="${FOAM_SIGFPE:-false}"
 
 SRC="${1:-/mnt/d/dev/SaunaFEM/results/openfoam_dry}"
 RUN_TOPOSET=false
@@ -31,6 +33,11 @@ echo "=== Case: $CASE_NAME | Solver: $SOLVER ==="
 
 echo "=== blockMesh ==="
 blockMesh > log.blockMesh 2>&1
+
+# Auto-detect: volume_source heater (and other cellZone sources) need topoSet
+if [ -f system/topoSetDict ]; then
+    RUN_TOPOSET=true
+fi
 
 if [ "$RUN_TOPOSET" = true ] && [ -f system/topoSetDict ]; then
     echo "=== topoSet (heaterZone) ==="

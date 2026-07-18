@@ -20,6 +20,12 @@ boundary_conditions:
     rho_cp: 500000
   heater:
     power_kw: 18.0
+    # volume_source: surface_flux (externalWallHeatFluxTemperature mode flux)
+    # diverges from step 1 — with laminar startup kappa the implied face T is
+    # O(1e5) K and the p-h coupling oscillates (verified 2026-07). See
+    # docs/openfoam_troubleshooting.md #12.
+    model: volume_source
+    depth: 0.3
     position:
       x: 0.0
       y: 0.1

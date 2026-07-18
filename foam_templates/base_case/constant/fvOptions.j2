@@ -28,7 +28,14 @@ buoyancyProduction
         #{
         #};
 
+        // Compressible solvers (buoyant*Foam) call the rho-variant addSup;
+        // codeAddSup is only for incompressible solvers and is never invoked
+        // here. Leaving it empty is intentional.
         codeAddSup
+        #{
+        #};
+
+        codeAddSupRho
         #{
             // Buoyancy production/destruction term G_b for k-equation
             // G_b = -(mu_t / (rho * Pr_t)) * (g & grad(rho))
@@ -40,12 +47,12 @@ buoyancyProduction
             // via the equation of state in thermophysicalProperties.
             // The solver registers "nut" (kinematic); "mut" is not guaranteed
             // to exist, so look up nut and avoid the rho division entirely.
-            const volScalarField& rho =
-                mesh_.lookupObject<volScalarField>("rho");
+            // rho is the addSup(rho, eqn, fieldi) argument.
             const volScalarField& nut =
                 mesh_.lookupObject<volScalarField>("nut");
+            // g is registered on the Time database, not the mesh registry
             const uniformDimensionedVectorField& g =
-                mesh_.lookupObject<uniformDimensionedVectorField>("g");
+                mesh_.time().lookupObject<uniformDimensionedVectorField>("g");
             const scalar Prt = 0.85;
 
             volScalarField Gb
@@ -89,7 +96,13 @@ aufgussJet
         #{
         #};
 
+        // Compressible solvers call the rho-variant addSup; codeAddSup is
+        // never invoked here (see buoyancyProduction above).
         codeAddSup
+        #{
+        #};
+
+        codeAddSupRho
         #{
             // Aufguss jet: downward momentum in the aufguss zone
             // Simulates towel waving creating a directed air jet.
@@ -100,9 +113,7 @@ aufgussJet
             const scalar jetAccel = jetVelocity / {{ aufguss_duration }};  // m/s^2
             const scalar jetDirection = -1.0;  // downward (y-direction)
 
-            const volScalarField& rho =
-                mesh_.lookupObject<volScalarField>("rho");
-
+            // rho is the addSup(rho, eqn, fieldi) argument
             vectorField& USource = eqn.source();
             const scalarField& V = mesh_.V();
 
