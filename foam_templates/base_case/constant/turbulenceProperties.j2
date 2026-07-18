@@ -18,7 +18,8 @@ RAS
     turbulence      on;
     printCoeffs     on;
 
-    // Prevent excessive turbulence decay in buoyancy-driven flows
-    // kMin sets a floor on turbulent kinetic energy to maintain mixing
-    kMin            0.01;
+    // Floor on k to avoid division blow-ups; must stay well below the
+    // physical k level (~1e-3 for indoor natural convection) so it does
+    // not artificially sustain turbulence
+    kMin            1e-4;
 }

@@ -32,30 +32,26 @@ buoyancyProduction
         #{
             // Buoyancy production/destruction term G_b for k-equation
             // G_b = -(mu_t / (rho * Pr_t)) * (g & grad(rho))
+            //     = -(nu_t / Pr_t) * (g & grad(rho))   [since mu_t = rho*nu_t]
             // Stable stratification (hot above cold) -> suppresses turbulence
             // Unstable stratification (cold above hot) -> enhances turbulence
             // NOTE: fvc::grad(rho) is valid for multiComponentMixture too,
             // because rho already accounts for composition (Y_i) effects
             // via the equation of state in thermophysicalProperties.
+            // The solver registers "nut" (kinematic); "mut" is not guaranteed
+            // to exist, so look up nut and avoid the rho division entirely.
             const volScalarField& rho =
                 mesh_.lookupObject<volScalarField>("rho");
-            const volScalarField& mut =
-                mesh_.lookupObject<volScalarField>("mut");
+            const volScalarField& nut =
+                mesh_.lookupObject<volScalarField>("nut");
             const uniformDimensionedVectorField& g =
                 mesh_.lookupObject<uniformDimensionedVectorField>("g");
             const scalar Prt = 0.85;
 
-            // Guard against zero density at startup
-            volScalarField rhoSafe
-            (
-                "rhoSafe",
-                max(rho, dimensionedScalar("rhoMin", rho.dimensions(), 0.5))
-            );
-
             volScalarField Gb
             (
                 "Gb",
-                -(mut / (rhoSafe * Prt)) * (g & fvc::grad(rho))
+                -(nut / Prt) * (g & fvc::grad(rho))
             );
 
             // Explicit source: add Gb directly to k equation RHS.
@@ -96,9 +92,16 @@ aufgussJet
         codeAddSup
         #{
             // Aufguss jet: downward momentum in the aufguss zone
-            // Simulates towel waving creating a directed air jet
+            // Simulates towel waving creating a directed air jet.
+            // Body force per unit volume f = rho * a with acceleration
+            // a = jetVelocity / duration [m/s^2], so the matrix source
+            // contribution is f * V with dimensions [kg m / s^2].
             const scalar jetVelocity = {{ aufguss_jet_velocity }};  // m/s
+            const scalar jetAccel = jetVelocity / {{ aufguss_duration }};  // m/s^2
             const scalar jetDirection = -1.0;  // downward (y-direction)
+
+            const volScalarField& rho =
+                mesh_.lookupObject<volScalarField>("rho");
 
             vectorField& USource = eqn.source();
             const scalarField& V = mesh_.V();
@@ -106,9 +109,9 @@ aufgussJet
             forAll(cells, i)
             {
                 label cellI = cells[i];
-                // Momentum source = rho * V * acceleration
-                // Simplified as a body force in the y-direction
-                USource[cellI][1] += jetDirection * jetVelocity * V[cellI] / {{ aufguss_duration }};
+                // fvMatrix::source() uses residual-form sign convention:
+                // subtract f*V to apply a force in +f direction
+                USource[cellI][1] -= jetDirection * rho[cellI] * jetAccel * V[cellI];
             }
         #};
 

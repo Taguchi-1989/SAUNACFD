@@ -31,7 +31,10 @@ solver:
   name: buoyantPimpleFoam
   end_time: 300
   write_interval: 10
-  delta_t: 0.05
+  # 0.05 diverges (docs/openfoam_troubleshooting.md #9); start small and let
+  # adjustableRunTime grow the step up to max_delta_t
+  delta_t: 0.001
+  max_delta_t: 0.5
   averaging_start: 150
 
 probes:
