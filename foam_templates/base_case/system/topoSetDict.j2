@@ -24,4 +24,20 @@ actions
         set     heaterZoneSet;
     }
 {% endif %}
+{% if aufguss_enabled %}
+    {
+        name    aufgussZoneSet;
+        type    cellSet;
+        action  new;
+        source  boxToCell;
+        box     ({{ aufguss_x0 }} {{ aufguss_y0 }} {{ aufguss_z0 }}) ({{ aufguss_x1 }} {{ aufguss_y1 }} {{ aufguss_z1 }});
+    }
+    {
+        name    aufgussZone;
+        type    cellZoneSet;
+        action  new;
+        source  setToCellZone;
+        set     aufgussZoneSet;
+    }
+{% endif %}
 );

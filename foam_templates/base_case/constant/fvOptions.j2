@@ -77,6 +77,7 @@ buoyancyProduction
 aufgussJet
 {
     type            vectorCodedSource;
+    name            aufgussJetSource;
     active          true;
     selectionMode   cellZone;
     cellZone        aufgussZone;
@@ -106,23 +107,43 @@ aufgussJet
         #{
             // Aufguss jet: downward momentum in the aufguss zone
             // Simulates towel waving creating a directed air jet.
-            // Body force per unit volume f = rho * a with acceleration
-            // a = jetVelocity / duration [m/s^2], so the matrix source
-            // contribution is f * V with dimensions [kg m / s^2].
+            // Relaxation force toward the target jet velocity:
+            //   f = rho * (Uy_target - Uy) / tauJet   [N/m^3]
+            // Self-limiting (vanishes as the zone reaches jet speed), so the
+            // jet spins up in ~tauJet seconds and cannot overshoot. tauJet
+            // must stay well above the max time step (0.5 s) for explicit
+            // stability.
+            // Active only during the aufguss window [start, start+duration]
+            const scalar t = mesh_.time().value();
+            const scalar tStart = {{ aufguss_start_time }};
+            const scalar tDuration = {{ aufguss_duration }};
+            if (t < tStart || t > tStart + tDuration)
+            {
+                return;
+            }
+
             const scalar jetVelocity = {{ aufguss_jet_velocity }};  // m/s
-            const scalar jetAccel = jetVelocity / {{ aufguss_duration }};  // m/s^2
             const scalar jetDirection = -1.0;  // downward (y-direction)
+            const scalar tauJet = 1.0;  // jet spin-up time [s]
+            const scalar uyTarget = jetDirection * jetVelocity;
 
             // rho is the addSup(rho, eqn, fieldi) argument
+            const volVectorField& U =
+                mesh_.lookupObject<volVectorField>("U");
+
             vectorField& USource = eqn.source();
             const scalarField& V = mesh_.V();
 
-            forAll(cells, i)
+            // cellSetOption::cells() is a member function in v2312
+            const labelList& zoneCells = cells();
+
+            forAll(zoneCells, i)
             {
-                label cellI = cells[i];
+                label cellI = zoneCells[i];
                 // fvMatrix::source() uses residual-form sign convention:
                 // subtract f*V to apply a force in +f direction
-                USource[cellI][1] -= jetDirection * rho[cellI] * jetAccel * V[cellI];
+                USource[cellI][1] -=
+                    rho[cellI] * (uyTarget - U[cellI].y()) / tauJet * V[cellI];
             }
         #};
 
