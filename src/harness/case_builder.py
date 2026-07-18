@@ -582,6 +582,7 @@ def build_case(case_yaml: Path, output_dir: Path | None = None) -> Path:
         "aufguss_enabled": aufguss_enabled,
         "aufguss_jet_velocity": aufguss.get("jet_velocity", 2.0) if aufguss_enabled else 0.0,
         "aufguss_duration": aufguss.get("duration", 1.0) if aufguss_enabled else 1.0,
+        "aufguss_start_time": aufguss.get("start_time", 0.0) if aufguss_enabled else 0.0,
         "buoyancy_production": buoyancy_production,
         "species_transport": species_transport,
         "radiation_model": radiation_model,
@@ -610,6 +611,22 @@ def build_case(case_yaml: Path, output_dir: Path | None = None) -> Path:
         )
         context["supply_patch_area"] = supply_patch_area
         context["exhaust_patch_area"] = exhaust_patch_area
+
+    # Aufguss jet zone: a column at the room centre in the upper region
+    # (towel waving height). topoSetDict creates cellZone "aufgussZone" from
+    # this box; the fvOptions momentum source acts only inside it.
+    if aufguss_enabled:
+        gdims = data["geometry"]["dimensions"]
+        # At least 0.3 m wide so the box always captures cells on M0 meshes
+        half = max(aufguss.get("jet_diameter", 0.15), 0.3) / 2.0
+        xc = gdims["x"] / 2.0
+        zc = gdims["z"] / 2.0
+        context["aufguss_x0"] = round(xc - half, 6)
+        context["aufguss_x1"] = round(xc + half, 6)
+        context["aufguss_z0"] = round(zc - half, 6)
+        context["aufguss_z1"] = round(zc + half, 6)
+        context["aufguss_y0"] = round(0.6 * gdims["y"], 6)
+        context["aufguss_y1"] = round(0.9 * gdims["y"], 6)
 
     # Skip vapor field template for pure mixture cases
     skip: list[str] = []

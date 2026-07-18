@@ -20,6 +20,12 @@ boundary_conditions:
     rho_cp: 500000
   heater:
     power_kw: 18.0
+    # volume_source: surface_flux (externalWallHeatFluxTemperature mode flux)
+    # diverges from step 1 — with laminar startup kappa the implied face T is
+    # O(1e5) K and the p-h coupling oscillates (verified 2026-07). See
+    # docs/openfoam_troubleshooting.md #12.
+    model: volume_source
+    depth: 0.3
     position:
       x: 0.0
       y: 0.1
@@ -31,7 +37,10 @@ solver:
   name: buoyantPimpleFoam
   end_time: 300
   write_interval: 10
-  delta_t: 0.05
+  # 0.05 diverges (docs/openfoam_troubleshooting.md #9); start small and let
+  # adjustableRunTime grow the step up to max_delta_t
+  delta_t: 0.001
+  max_delta_t: 0.5
   averaging_start: 150
 
 probes:

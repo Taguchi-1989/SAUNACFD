@@ -8,20 +8,21 @@ FoamFile
 
 dimensions      [0 2 -2 0 0 0 0];
 
-internalField   uniform 1.0;
+// k = 1.5*(u'*I)^2 with U ~ 0.3 m/s, I ~ 10% for indoor natural convection
+internalField   uniform 1e-3;
 
 boundaryField
 {
     "(floor|ceiling|heater_wall|heater_wall_surround|opposite_wall|front|back)"
     {
         type            kqRWallFunction;
-        value           uniform 1.0;
+        value           uniform 1e-3;
     }
 {% if ventilation | default(false) %}
     supply_vent
     {
         type            fixedValue;
-        value           uniform 1.0;
+        value           uniform 1e-3;
     }
     exhaust_vent
     {

@@ -28,34 +28,37 @@ buoyancyProduction
         #{
         #};
 
+        // Compressible solvers (buoyant*Foam) call the rho-variant addSup;
+        // codeAddSup is only for incompressible solvers and is never invoked
+        // here. Leaving it empty is intentional.
         codeAddSup
+        #{
+        #};
+
+        codeAddSupRho
         #{
             // Buoyancy production/destruction term G_b for k-equation
             // G_b = -(mu_t / (rho * Pr_t)) * (g & grad(rho))
+            //     = -(nu_t / Pr_t) * (g & grad(rho))   [since mu_t = rho*nu_t]
             // Stable stratification (hot above cold) -> suppresses turbulence
             // Unstable stratification (cold above hot) -> enhances turbulence
             // NOTE: fvc::grad(rho) is valid for multiComponentMixture too,
             // because rho already accounts for composition (Y_i) effects
             // via the equation of state in thermophysicalProperties.
-            const volScalarField& rho =
-                mesh_.lookupObject<volScalarField>("rho");
-            const volScalarField& mut =
-                mesh_.lookupObject<volScalarField>("mut");
+            // The solver registers "nut" (kinematic); "mut" is not guaranteed
+            // to exist, so look up nut and avoid the rho division entirely.
+            // rho is the addSup(rho, eqn, fieldi) argument.
+            const volScalarField& nut =
+                mesh_.lookupObject<volScalarField>("nut");
+            // g is registered on the Time database, not the mesh registry
             const uniformDimensionedVectorField& g =
-                mesh_.lookupObject<uniformDimensionedVectorField>("g");
+                mesh_.time().lookupObject<uniformDimensionedVectorField>("g");
             const scalar Prt = 0.85;
-
-            // Guard against zero density at startup
-            volScalarField rhoSafe
-            (
-                "rhoSafe",
-                max(rho, dimensionedScalar("rhoMin", rho.dimensions(), 0.5))
-            );
 
             volScalarField Gb
             (
                 "Gb",
-                -(mut / (rhoSafe * Prt)) * (g & fvc::grad(rho))
+                -(nut / Prt) * (g & fvc::grad(rho))
             );
 
             // Explicit source: add Gb directly to k equation RHS.
@@ -74,6 +77,7 @@ buoyancyProduction
 aufgussJet
 {
     type            vectorCodedSource;
+    name            aufgussJetSource;
     active          true;
     selectionMode   cellZone;
     cellZone        aufgussZone;
@@ -93,22 +97,53 @@ aufgussJet
         #{
         #};
 
+        // Compressible solvers call the rho-variant addSup; codeAddSup is
+        // never invoked here (see buoyancyProduction above).
         codeAddSup
         #{
+        #};
+
+        codeAddSupRho
+        #{
             // Aufguss jet: downward momentum in the aufguss zone
-            // Simulates towel waving creating a directed air jet
+            // Simulates towel waving creating a directed air jet.
+            // Relaxation force toward the target jet velocity:
+            //   f = rho * (Uy_target - Uy) / tauJet   [N/m^3]
+            // Self-limiting (vanishes as the zone reaches jet speed), so the
+            // jet spins up in ~tauJet seconds and cannot overshoot. tauJet
+            // must stay well above the max time step (0.5 s) for explicit
+            // stability.
+            // Active only during the aufguss window [start, start+duration]
+            const scalar t = mesh_.time().value();
+            const scalar tStart = {{ aufguss_start_time }};
+            const scalar tDuration = {{ aufguss_duration }};
+            if (t < tStart || t > tStart + tDuration)
+            {
+                return;
+            }
+
             const scalar jetVelocity = {{ aufguss_jet_velocity }};  // m/s
             const scalar jetDirection = -1.0;  // downward (y-direction)
+            const scalar tauJet = 1.0;  // jet spin-up time [s]
+            const scalar uyTarget = jetDirection * jetVelocity;
+
+            // rho is the addSup(rho, eqn, fieldi) argument
+            const volVectorField& U =
+                mesh_.lookupObject<volVectorField>("U");
 
             vectorField& USource = eqn.source();
             const scalarField& V = mesh_.V();
 
-            forAll(cells, i)
+            // cellSetOption::cells() is a member function in v2312
+            const labelList& zoneCells = cells();
+
+            forAll(zoneCells, i)
             {
-                label cellI = cells[i];
-                // Momentum source = rho * V * acceleration
-                // Simplified as a body force in the y-direction
-                USource[cellI][1] += jetDirection * jetVelocity * V[cellI] / {{ aufguss_duration }};
+                label cellI = zoneCells[i];
+                // fvMatrix::source() uses residual-form sign convention:
+                // subtract f*V to apply a force in +f direction
+                USource[cellI][1] -=
+                    rho[cellI] * (uyTarget - U[cellI].y()) / tauJet * V[cellI];
             }
         #};
 

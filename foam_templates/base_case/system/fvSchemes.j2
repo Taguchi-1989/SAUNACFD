@@ -9,7 +9,9 @@ FoamFile
 ddtSchemes
 {
 {% if solver_name == "buoyantPimpleFoam" %}
-    default         backward;
+    // Euler (bounded, 1st order): backward is unbounded and oscillates from
+    // its first active step (step 2) during the strong startup transient
+    default         Euler;
 {% else %}
     default         steadyState;
 {% endif %}
@@ -22,32 +24,37 @@ gradSchemes
     grad(U)         cellLimited Gauss linear 1;
 }
 
+{# "bounded" subtracts div(phi)*psi — valid only where div(phi)=0. In the
+   compressible transient solver div(phi) = -ddt(rho) != 0 near the heater,
+   so the bounded form injects a spurious source and destabilizes PIMPLE.
+   Keep it for the steady SIMPLE solver only. #}
+{% set bnd = "bounded " if solver_name != "buoyantPimpleFoam" else "" %}
 divSchemes
 {
     default         none;
-    div(phi,U)      bounded Gauss linearUpwind grad(U);
+    div(phi,U)      {{ bnd }}Gauss linearUpwind grad(U);
 {% if convection_scheme | default("linearUpwind") == "vanLeer" %}
-    div(phi,T)      bounded Gauss vanLeer;
-    div(phi,h)      bounded Gauss vanLeer;
+    div(phi,T)      {{ bnd }}Gauss vanLeer;
+    div(phi,h)      {{ bnd }}Gauss vanLeer;
 {% elif convection_scheme | default("linearUpwind") == "limitedLinear" %}
-    div(phi,T)      bounded Gauss limitedLinear 1;
-    div(phi,h)      bounded Gauss limitedLinear 1;
+    div(phi,T)      {{ bnd }}Gauss limitedLinear 1;
+    div(phi,h)      {{ bnd }}Gauss limitedLinear 1;
 {% else %}
-    div(phi,T)      bounded Gauss linearUpwind default;
-    div(phi,h)      bounded Gauss linearUpwind default;
+    div(phi,T)      {{ bnd }}Gauss linearUpwind default;
+    div(phi,h)      {{ bnd }}Gauss linearUpwind default;
 {% endif %}
-    div(phi,k)      bounded Gauss upwind;
-    div(phi,omega)  bounded Gauss upwind;
-    div(phi,epsilon) bounded Gauss upwind;
-    div(phi,K)      bounded Gauss linear;
-    div(phi,p)      bounded Gauss linear;
+    div(phi,k)      {{ bnd }}Gauss upwind;
+    div(phi,omega)  {{ bnd }}Gauss upwind;
+    div(phi,epsilon) {{ bnd }}Gauss upwind;
+    div(phi,K)      {{ bnd }}Gauss limitedLinear 1;
+    div(phi,p)      {{ bnd }}Gauss limitedLinear 1;
     div((nuEff*dev2(T(grad(U))))) Gauss linear;
     div(((rho*nuEff)*dev2(T(grad(U))))) Gauss linear;
 {% if species_transport | default(false) %}
-    div(phi,Yi_h)   bounded Gauss linearUpwind default;
+    div(phi,Yi_h)   {{ bnd }}Gauss linearUpwind default;
 {% endif %}
 {% if radiation_model | default("none") == "fvDOM" %}
-    div(Ji,Ii_h)    bounded Gauss linearUpwind default;
+    div(Ji,Ii_h)    Gauss linearUpwind default;
 {% endif %}
 }
 

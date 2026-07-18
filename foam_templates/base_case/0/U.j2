@@ -30,14 +30,11 @@ boundaryField
     }
     exhaust_vent
     {
-{% if exhaust_velocity | default(0) > 0 %}
-        // Scaled velocity: YAML area -> patch area ratio
-        type            fixedValue;
-        value           uniform ({{ exhaust_velocity }} 0 0);
-{% else %}
+        // Always pressure-driven: fixing velocity on both vents over-constrains
+        // mass conservation (supply/exhaust fluxes never balance exactly for a
+        // compressible solver) and leaves no pressure-referenced boundary.
         type            pressureInletOutletVelocity;
         value           uniform (0 0 0);
-{% endif %}
     }
 {% endif %}
 }

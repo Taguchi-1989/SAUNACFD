@@ -12,15 +12,12 @@ internalField   uniform {{ Y_H2O_initial | default(0.01) }};
 
 boundaryField
 {
-    "(floor|ceiling|heater_wall_surround|opposite_wall|front|back)"
+    // heater_wall included: a fixedValue there acts as an unbounded vapor
+    // source/sink. Loyly steam should be injected via an fvOptions cellZone
+    // source, not a wall BC.
+    "(floor|ceiling|heater_wall|heater_wall_surround|opposite_wall|front|back)"
     {
         type            zeroGradient;
-    }
-
-    heater_wall
-    {
-        type            fixedValue;
-        value           uniform {{ Y_H2O_heater | default(0.01) }};
     }
 {% if ventilation | default(false) %}
     supply_vent

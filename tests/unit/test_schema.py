@@ -70,9 +70,9 @@ class TestHeaterModelSchema:
         assert len(errors) > 0
 
     def test_no_model_defaults_ok(self, sample_case_path: Path) -> None:
-        """Existing YAML without heater.model should still pass."""
+        """YAML without heater.model should still pass."""
         data = load_yaml(sample_case_path)
-        assert "model" not in data["boundary_conditions"]["heater"]
+        data["boundary_conditions"]["heater"].pop("model", None)
         errors = validate_case(data)
         assert errors == []
 

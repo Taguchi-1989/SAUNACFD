@@ -182,6 +182,65 @@ GAMG: Solving for p_rgh, Initial residual = nan
 
 ---
 
+### 10. codedSource が `Not implemented` で abort（2026-07 判明）
+
+**エラー:**
+```
+--> FOAM FATAL ERROR: Not implemented
+    From virtual void Foam::fv::...::addSup(const Foam::volScalarField&, Foam::fvMatrix<double>&, Foam::label)
+```
+
+**原因:** 圧縮性ソルバー (buoyant*Foam) の fvOptions は rho 付きの
+`addSup(rho, eqn, fieldi)` を呼ぶが、codedSource に `codeAddSup` しか
+定義していなかった。rho 変種は `codeAddSupRho` に書く必要がある。
+つまり **buoyancyProduction / aufgussJet の codedSource は今まで一度も
+実行されていなかった**（従来は手前の発散か wmake 不在で到達不能だった）。
+
+**修正:** `fvOptions.j2` の codedSource に `codeAddSupRho` を追加。
+rho は引数で渡ってくるので lookupObject は不要（再宣言するとコンパイルエラー）。
+
+**教訓:** 圧縮性ソルバー + codedSource は `codeAddSupRho` が本体。
+
+---
+
+### 11. WSL に wmake が無く codedSource がコンパイル不能（2026-07 判明）
+
+**エラー:**
+```
+--> FOAM FATAL ERROR: exec(wmake, ...) failed
+```
+
+**原因:** `openfoam2312` (runtime) パッケージのみインストールされており、
+wmake / ヘッダを含む開発パッケージが無かった。
+
+**修正:** `sudo apt install openfoam2312-dev`（インストール済み 2026-07-18）。
+
+---
+
+### 12. surface_flux ヒーター (externalWallHeatFluxTemperature mode flux) は初回ステップから発振（2026-07 判明）
+
+**エラー:** FPE (`Foam::divide`)。PIMPLE 外部反復で h / p_rgh の残差が
+反復ごとに ~×30 成長し、最終反復で圧力系が崩壊。
+
+**原因:** 立ち上がりは壁近傍が層流 (alphat≈0) のため κ_eff = κ_laminar。
+q=60000 W/m² を半セル (0.0625 m) の伝導で受けると境界面温度が
+T_face = T_cell + q·δ/κ ≈ 1.4e5 K となり、面の rho/h が非物理的な値になって
+圧力-エネルギー結合が初回タイムステップ内で発振する。
+初期場（2-Zone/一様）・codedSource・ddt スキーム・bounded div は無関係
+（各々単独に切って再現することを確認済み）。
+
+**修正:** ベースラインは `heater.model: volume_source`（topoSet の
+heaterZone + scalarSemiImplicitSource）に変更。壁面特異性が無く、
+FOAM_SIGFPE=true（トラップ有効）のまま 300 秒完走を確認。
+surface_flux を使う場合は q の時間ランプ（table）+ 発達した乱流場からの
+リスタートが必要。
+
+**検証結果 (dry_sauna_steady, M0, 18kW, FOAM_SIGFPE=true):**
+- 300 秒完走、FPE ゼロ、Courant max ≈ 0.30 (=maxCo)
+- 温度成層再現: 上段 464 K > 下段 413 K > 床 334 K
+
+---
+
 ## チェックリスト: buoyantPimpleFoam ケース作成時
 
 - [ ] `fvSchemes`: `wallDist { method meshWave; }` を含む
@@ -192,6 +251,8 @@ GAMG: Solving for p_rgh, Initial residual = nan
 - [ ] `constant/hRef`: 存在する (value = 0)
 - [ ] `controlDict`: `deltaT` が十分小さい (0.001 推奨)
 - [ ] `controlDict`: `maxCo ≤ 0.5`, `adjustTimeStep yes`
-- [ ] `codedSource`: ゼロ除算ガードあり
-- [ ] ヒーター BC: 初期安定化には `fixedValue` が安全
-- [ ] `FOAM_SIGFPE=false` を実行時に設定（開発中）
+- [ ] `codedSource`: 圧縮性ソルバーでは `codeAddSupRho` に本体を書く（#10）
+- [ ] ヒーター: `model: volume_source` が安定（surface_flux は発振する — #12）
+- [ ] PIMPLE: 中間外部反復に relaxationFactors（h 0.5, U/k/omega 0.7, Final 1）
+- [ ] FOAM_SIGFPE は既定でトラップ有効のまま実行できる（#12 修正後）。
+      発散調査時のみ `FOAM_SIGFPE=false` で延命させる

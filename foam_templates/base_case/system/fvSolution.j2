@@ -79,7 +79,7 @@ solvers
 PIMPLE
 {
     nOuterCorrectors    4;
-    nCorrectors         1;
+    nCorrectors         2;
     nNonOrthogonalCorrectors 0;
     pRefCell            0;
     pRefValue           101325;
@@ -135,6 +135,21 @@ relaxationFactors
         k               0.5;
         omega           0.5;
         epsilon         0.5;
+    }
+}
+{% elif solver_name == "buoyantPimpleFoam" %}
+// With nOuterCorrectors > 1, intermediate outer iterations must be
+// under-relaxed or the strongly coupled rho-h-U system oscillates and
+// diverges (SIGFPE via rho -> 0). Final-iteration factors of 1 keep the
+// converged time step fully second-order.
+relaxationFactors
+{
+    equations
+    {
+        h                        0.5;
+        hFinal                   1;
+        "(U|k|omega|epsilon)"      0.7;
+        "(U|k|omega|epsilon)Final" 1;
     }
 }
 {% endif %}
